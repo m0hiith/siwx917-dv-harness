@@ -1,0 +1,5 @@
+results/
+__pycache__/
+.pytest_cache/
+firmware/*.s37
+firmware/*.hex

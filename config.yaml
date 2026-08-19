@@ -1,0 +1,31 @@
+# config.yaml — everything that differs between YOUR bench and someone else's.
+# Tests read this file; they never hardcode serial numbers or paths.
+
+# How to launch Simplicity Commander.
+#   In the lab  : "commander"          (after adding it to PATH)
+#   On the bus  : "python3 tools/fake_commander.py"   (pretend board)
+commander: "python3 tools/fake_commander.py"
+
+boards:
+  dut:
+    serial: "440123456"        # <- replace with the J-Link serial on your kit
+  peer:
+    serial: "440654321"        # <- second board, used from Level 2 onwards
+
+# Firmware images the tests flash.  Build these in Simplicity Studio / VS Code
+# and copy the .s37 here.  Names matter for the FAKE commander only.
+firmware:
+  em0_busy:   firmware/em0_busy.s37      # CPU awake in a loop
+  em2_sleep:  firmware/em2_sleep.s37     # deep sleep, RTC running
+  ble_adv:    firmware/ble_adv_1000ms.s37  # SoC Empty advertising at 1 s
+
+# Power test settings
+power:
+  settle_s: 2          # wait after reset before measuring (caps charge, radio calibrates)
+  duration_s: 2        # how long each dump runs
+  datarate_hz: 1000    # samples per second from AEM
+  repeats: 5           # how many independent runs -> gives you mean AND std
+  limits_mA:           # PASS if mean current is BELOW this. Start loose, tighten
+    em0_busy:  5.0     #   once you have real numbers + datasheet in hand.
+    em2_sleep: 0.010
+    ble_adv:   0.100
