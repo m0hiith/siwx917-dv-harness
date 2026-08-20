@@ -73,6 +73,11 @@ def main(argv):
         else:
             words.append(a)
             i += 1
+    if "version" in opts:
+        print("Simplicity Commander 1.17.0 (FAKE)")
+        print("JLink DLL version 7.94e (FAKE)")
+        return 0
+
     serial = opts.get("serialno", serial)
     st = load(serial)
 

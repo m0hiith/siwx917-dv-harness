@@ -56,14 +56,20 @@ class Device:
     # ------------------------------------------------------------------ #
     # The one low-level function every other method uses.
     # ------------------------------------------------------------------ #
-    def _run(self, *args: str, expect_done: bool = True) -> str:
+    def _run(self, *args: str, expect_done: bool = True,
+             with_serial: bool = True) -> str:
         """Run `commander <args> --serialno <serial>` and return its stdout.
 
         Commander prints the word DONE on success.  If it is missing, or the
         exit code is non-zero, we raise CommanderError with the full output so
         the failure is visible in the test report instead of silently passing.
+
+        with_serial=False is for commands that address the TOOL rather than a
+        board (`--version`), where a --serialno would be meaningless.
         """
-        cmd = shlex.split(self.commander) + list(args) + ["--serialno", self.serial]
+        cmd = shlex.split(self.commander) + list(args)
+        if with_serial:
+            cmd += ["--serialno", self.serial]
         proc = subprocess.run(
             cmd, capture_output=True, text=True, timeout=self.timeout_s
         )
@@ -94,6 +100,19 @@ class Device:
 
     def has_aem(self) -> bool:
         return self.probe().get("AEM Supported", "0").strip() == "1"
+
+    def commander_version(self) -> str:
+        """The Commander build string, recorded in the results manifest.
+
+        Which Commander built a result matters later: RPS handling has
+        changed between releases, so "which tool produced this number" is
+        part of the measurement, not trivia.  Does not print DONE.
+        """
+        out = self._run("--version", expect_done=False, with_serial=False)
+        for line in out.splitlines():
+            if line.strip():
+                return line.strip()
+        raise CommanderError(f"`--version` printed nothing:\n{out}")
 
     def flash(self, firmware: str | Path) -> None:
         """Put a new program into the chip.  Wraps `commander rps load`.

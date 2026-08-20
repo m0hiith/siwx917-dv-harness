@@ -16,6 +16,7 @@ from pathlib import Path
 import pytest
 import yaml
 
+from dvharness import manifest as manifest_mod
 from dvharness.device import Device
 from dvharness.firmware import is_practice_mode, resolve_firmware
 
@@ -40,16 +41,46 @@ def practice_mode(cfg) -> bool:
     return is_practice_mode(cfg["commander"])
 
 
+@pytest.fixture(scope="session")
+def flashed_firmware() -> dict:
+    """mode -> image path, filled in as tests resolve images. Feeds the manifest."""
+    return {}
+
+
 @pytest.fixture
-def firmware(cfg):
+def firmware(cfg, flashed_firmware):
     """firmware("ps1_sleep") -> Path to that mode's .rps image.
 
     In practice mode a missing image is stubbed out. Against a real kit a
     missing image is an error naming the path, never a fabricated file.
+    Every resolved image is recorded so manifest.json can hash exactly what
+    was flashed, rather than everything config.yaml happens to list.
     """
     def _get(mode: str) -> Path:
-        return resolve_firmware(cfg, mode)
+        path = resolve_firmware(cfg, mode)
+        flashed_firmware[mode] = path
+        return path
     return _get
+
+
+@pytest.fixture(scope="session", autouse=True)
+def session_manifest(cfg, dut, results_dir, flashed_firmware) -> Path:
+    """Write results/<ts>/manifest.json at session start, rewrite it at the end.
+
+    Written twice on purpose: the opening write means a run that crashes or
+    gets killed still leaves a trail saying what it was doing.
+    """
+    started = manifest_mod.utc_now()
+    path = results_dir / "manifest.json"
+    manifest_mod.write(path, manifest_mod.build(
+        root=ROOT, cfg=cfg, device=dut, started_utc=started,
+    ))
+    yield path
+    manifest_mod.write(path, manifest_mod.build(
+        root=ROOT, cfg=cfg, device=dut, started_utc=started,
+        ended_utc=manifest_mod.utc_now(),
+        firmware_flashed=dict(flashed_firmware),
+    ))
 
 
 @pytest.fixture(scope="session")
