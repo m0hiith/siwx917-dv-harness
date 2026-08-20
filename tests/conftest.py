@@ -17,6 +17,7 @@ import pytest
 import yaml
 
 from dvharness.device import Device
+from dvharness.firmware import is_practice_mode, resolve_firmware
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -31,6 +32,24 @@ def cfg() -> dict:
 def dut(cfg) -> Device:
     """Device Under Test — the board we measure."""
     return Device(serial=cfg["boards"]["dut"]["serial"], commander=cfg["commander"])
+
+
+@pytest.fixture(scope="session")
+def practice_mode(cfg) -> bool:
+    """True when config.yaml points at the bundled fake commander."""
+    return is_practice_mode(cfg["commander"])
+
+
+@pytest.fixture
+def firmware(cfg):
+    """firmware("ps1_sleep") -> Path to that mode's .rps image.
+
+    In practice mode a missing image is stubbed out. Against a real kit a
+    missing image is an error naming the path, never a fabricated file.
+    """
+    def _get(mode: str) -> Path:
+        return resolve_firmware(cfg, mode)
+    return _get
 
 
 @pytest.fixture(scope="session")

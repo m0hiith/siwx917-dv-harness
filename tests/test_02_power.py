@@ -15,7 +15,6 @@ from __future__ import annotations
 import csv
 import json
 import time
-from pathlib import Path
 
 import pytest
 
@@ -24,18 +23,12 @@ from dvharness.stats import summarize
 MODES = ["ps4_active", "ps1_sleep", "ble_adv"]
 
 
-def _ensure_placeholder(fw: Path) -> None:
-    # Real lab: these are real .rps images you built. Fake board: any file works.
-    fw.parent.mkdir(exist_ok=True)
-    if not fw.exists():
-        fw.write_bytes(b"placeholder")
-
-
 @pytest.mark.parametrize("mode", MODES)
-def test_current_in_mode(dut, cfg, results_dir, mode, record_property):
+def test_current_in_mode(dut, cfg, results_dir, mode, record_property, firmware):
     pw = cfg["power"]
-    fw = Path(cfg["firmware"][mode])
-    _ensure_placeholder(fw)
+    # Refuses to invent an image unless we are on the fake board -- see
+    # dvharness/firmware.py. Never flash a fabricated .rps into real silicon.
+    fw = firmware(mode)
 
     run_means: list[float] = []
     rows: list[dict] = []
@@ -73,7 +66,7 @@ def test_current_in_mode(dut, cfg, results_dir, mode, record_property):
     )
 
 
-def test_99_make_plot(results_dir, cfg):
+def test_99_make_plot(results_dir, cfg, practice_mode):
     """Runs last: turn power_summary.json into a bar chart with error bars."""
     import matplotlib
     matplotlib.use("Agg")
@@ -83,7 +76,7 @@ def test_99_make_plot(results_dir, cfg):
     modes = list(summary)
     means = [summary[m]["mean"] for m in modes]
     stds = [summary[m]["std"] for m in modes]
-    is_fake = "fake" in cfg["commander"].lower()
+    is_fake = practice_mode
 
     fig, ax = plt.subplots(figsize=(6, 4))
     ax.bar(modes, means, yerr=stds, capsize=6)
