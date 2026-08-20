@@ -31,3 +31,16 @@ power:
     ps4_active: 5.0    #   once you have real numbers + datasheet in hand.
     ps1_sleep:  0.010
     ble_adv:    0.100
+
+  # What the METER can actually resolve, per mode, in mA.  Not a preference --
+  # this is the AEM's own spec from UG573 (BRD4002A / Si-MB4002A mainboard):
+  #   range 0.1 uA .. 495 mA
+  #   below 250 uA  -> accuracy 1 uA     = 0.001 mA
+  #   above 250 uA  -> accuracy 0.1 mA   = 0.100 mA
+  # A verdict never claims a tighter uncertainty than this, so five runs that
+  # happen to agree to six decimals cannot buy a confident PASS the instrument
+  # never earned.  Using an external meter (e.g. PPK2)? Put ITS floor here.
+  instrument_floor_mA:
+    ps4_active: 0.100  # ~2.6 mA  -> above 250 uA band
+    ps1_sleep:  0.001  # ~1.8 uA  -> below 250 uA band
+    ble_adv:    0.001  # ~45 uA   -> below 250 uA band

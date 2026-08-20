@@ -22,8 +22,9 @@ plus real serial numbers and real `.rps` images. No test code changes.
 ![Sample output — simulated](docs/sample-run/power_by_mode.png)
 
 *One run against the fake device: PS4 active 2.600 mA, PS1 sleep 1.80 uA, BLE
-advertising 44.9 uA, each a mean over five independent flash-reset-settle-measure
-cycles. See [docs/sample-run/](docs/sample-run/).*
+advertising 45.0 uA, each a mean over five independent flash-reset-settle-measure
+cycles. The error bars are the AEM's own resolution, not the simulator's spread
+— which is the whole point. See [docs/sample-run/](docs/sample-run/).*
 
 ## Folder map
 ```
@@ -72,12 +73,34 @@ Nordic PPK2 (has a Python API). Then replace `Device.dump_current()` with a
 call to that meter; the tests don't change.
 
 ## Rules of the harness (these are what a DV reviewer looks for)
-- Every number is mean ± std over independent runs. Never one reading.
+- Every number is mean ± spread over independent runs. Never one reading.
 - Pass/fail limits live in config, not in code, and start loose until you have
   the datasheet open next to real data.
 - Raw samples are always saved, so any summary can be re-checked later.
 - A failing test prints WHICH mode, WHAT number, WHAT limit.
 - Results folders are timestamped and never overwritten.
+- Every results folder carries a `manifest.json`: the config as read, a sha256
+  of each image flashed, the git commit and whether the tree was dirty, the
+  Commander version, the host, and start/end timestamps.
+- The harness will not invent a firmware image. A missing `.rps` is a stub only
+  in practice mode; against real hardware it is an error naming the path.
+
+## PASS / FAIL / INCONCLUSIVE
+A limit check is only as good as the meter behind it. `config.yaml` carries
+`instrument_floor_mA` per mode — the AEM's own resolution from UG573 (1 µA
+below 250 µA, 0.1 mA above). Each verdict widens its uncertainty to the larger
+of the standard error and that floor, then:
+
+| | |
+|---|---|
+| limit above `mean ± u` | **PASS** |
+| limit below `mean ± u` | **FAIL** |
+| limit inside `mean ± u` | **INCONCLUSIVE** |
+
+INCONCLUSIVE is not a soft pass — it fails the run. It says the measurement
+cannot answer the question, which is a different problem from the part being
+out of spec, and it needs a different fix: more runs, a tighter setup, or a
+limit that is not sitting inside the meter's own error.
 
 ## What comes next (not in this folder yet)
 - Level 2: `test_03_per_sweep.py` — two boards running the WiSeConnect PER

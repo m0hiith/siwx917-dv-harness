@@ -11,8 +11,8 @@ Do not quote any of it as a measurement.
 
 | File | What it is |
 |---|---|
-| `power_by_mode.png` | Bar chart, log scale, mean with std error bars |
-| `power_summary.json` | The per-mode mean / std / min / max the chart is drawn from |
+| `power_by_mode.png` | Bar chart, log scale, mean with measurement-uncertainty error bars |
+| `power_summary.json` | Per-mode mean / std / sem / min / max, plus the verdict and the arithmetic behind it |
 
 What the run does demonstrate, which is the point of committing it: the
 flash-reset-settle-measure cycle completes five independent times per mode,
@@ -20,9 +20,26 @@ the statistics are computed over independent runs rather than slices of one
 run, the limits are read from `config.yaml`, and the whole thing runs
 unattended and writes its own report.
 
-One thing worth noticing, and worth being upfront about: the PS1 sleep error
-bar here is about 0.22% of the reading. No real on-board AEM resolves
-single-digit microamps that tightly — at ~1.8 uA the instrument's own error is
-a large fraction of the value. That unrealistically tight spread is an artifact
-of the simulator, and it is exactly the number that will get worse, and more
-honest, on real hardware.
+## The error bar is the interesting part
+
+The simulator's own spread on the PS1 sleep reading is about 0.22% of the
+value — five runs agreeing to six decimal places. That is not precision, it
+is a random number generator repeating itself, and no real AEM resolves
+single-digit microamps anywhere near that tightly.
+
+So the harness no longer takes that spread at face value. `config.yaml`
+carries the AEM's own resolution per mode (`instrument_floor_mA`, from UG573:
+1 µA below 250 µA, 0.1 mA above it), and every verdict widens its uncertainty
+to whichever is larger — the statistical error or what the meter can actually
+resolve. For all three modes here the meter wins, by a factor of 17 to 431.
+
+That is why the PS1 bar in the chart is enormous: ±1 µA on a 1.8 µA reading
+is ±56%, and that is the honest picture. The old chart drew the 0.22% figure
+and made a simulator artifact look like a tight measurement.
+
+The third verdict exists for the same reason. When a limit falls inside
+`mean ± uncertainty` the result is **INCONCLUSIVE**, not a lucky PASS —
+the measurement simply cannot tell which side of the line the part is on.
+All three modes here are comfortably clear of their limits, so all three
+PASS; `tests/test_04_verdict.py` builds the inconclusive case on purpose,
+since the fake board never produces one by itself.

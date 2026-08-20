@@ -1,23 +1,53 @@
 {
   "ps4_active": {
     "n": 5,
-    "mean": 2.600053786,
-    "std": 0.00046058878464685303,
-    "min": 2.59944981,
-    "max": 2.600653665
+    "mean": 2.5998704679999998,
+    "std": 0.0006004487765269189,
+    "sem": 0.0002685288562641541,
+    "min": 2.5991934,
+    "max": 2.60077132,
+    "verdict": {
+      "verdict": "PASS",
+      "mean": 2.5998704679999998,
+      "limit": 5.0,
+      "uncertainty": 0.1,
+      "uncertainty_source": "instrument floor",
+      "instrument_floor": 0.1,
+      "reason": "mean 2.59987 mA + 0.1 mA (instrument floor) is still below the 5 mA limit"
+    }
   },
   "ps1_sleep": {
     "n": 5,
-    "mean": 0.001798701,
-    "std": 3.981033785337625e-06,
-    "min": 0.0017959,
-    "max": 0.00180574
+    "mean": 0.001798937,
+    "std": 5.187625420170567e-06,
+    "sem": 2.319976616261459e-06,
+    "min": 0.00179344,
+    "max": 0.001806635,
+    "verdict": {
+      "verdict": "PASS",
+      "mean": 0.001798937,
+      "limit": 0.01,
+      "uncertainty": 0.001,
+      "uncertainty_source": "instrument floor",
+      "instrument_floor": 0.001,
+      "reason": "mean 0.00179894 mA + 0.001 mA (instrument floor) is still below the 0.01 mA limit"
+    }
   },
   "ble_adv": {
     "n": 5,
-    "mean": 0.044946672,
-    "std": 2.6247720996307245e-05,
-    "min": 0.04491491,
-    "max": 0.04497754
+    "mean": 0.045039582,
+    "std": 0.00013199753883122193,
+    "sem": 5.9031093937856074e-05,
+    "min": 0.044810555,
+    "max": 0.04514246,
+    "verdict": {
+      "verdict": "PASS",
+      "mean": 0.045039582,
+      "limit": 0.1,
+      "uncertainty": 0.001,
+      "uncertainty_source": "instrument floor",
+      "instrument_floor": 0.001,
+      "reason": "mean 0.0450396 mA + 0.001 mA (instrument floor) is still below the 0.1 mA limit"
+    }
   }
 }
