@@ -1,7 +1,7 @@
 """
 test_02_power.py — Level 1 of the harness: how much electricity does the chip drink?
 
-For each firmware mode (CPU busy, deep sleep, BLE advertising):
+For each firmware mode (PS4 active, PS1 ULP sleep, BLE advertising):
   flash -> reset -> wait to settle -> record 2 s of current at 1000 samples/s
   ... repeat that whole cycle 5 times (5 INDEPENDENT runs, not 5 slices of one run)
   -> mean, std, min, max of the per-run means
@@ -21,11 +21,11 @@ import pytest
 
 from dvharness.stats import summarize
 
-MODES = ["em0_busy", "em2_sleep", "ble_adv"]
+MODES = ["ps4_active", "ps1_sleep", "ble_adv"]
 
 
 def _ensure_placeholder(fw: Path) -> None:
-    # Real lab: these are real .s37 files you built. Fake board: any file works.
+    # Real lab: these are real .rps images you built. Fake board: any file works.
     fw.parent.mkdir(exist_ok=True)
     if not fw.exists():
         fw.write_bytes(b"placeholder")
@@ -89,7 +89,7 @@ def test_99_make_plot(results_dir, cfg):
     ax.bar(modes, means, yerr=stds, capsize=6)
     ax.set_yscale("log")
     ax.set_ylabel("Average current (mA, log scale)")
-    ax.set_title("EFR32 current by mode — mean ± std over runs"
+    ax.set_title("SiWx917 current by mode — mean ± std over runs"
                  + ("\n(FAKE BOARD — practice data, not a measurement)" if is_fake else ""))
     for i, (m, s) in enumerate(zip(means, stds)):
         ax.text(i, m, f"{m*1000:.1f} µA" if m < 1 else f"{m:.2f} mA",

@@ -5,17 +5,22 @@ fake_commander.py — a CARDBOARD BOARD.
 PLAIN ENGLISH
 -------------
 You can't always have the real kit with you (it's in the college lab).  This
-script pretends to be Simplicity Commander: it accepts the same commands and
-prints the same shaped output, with made-up numbers.  That lets you write and
-test the Python harness on the bus, then swap in the real `commander` on PATH
-when you are in the lab.  NOTHING here is a real measurement.
+script pretends to be Simplicity Commander driving a SiWx917 kit: it accepts
+the same commands and prints the same shaped output, with made-up numbers.
+That lets you write and test the Python harness on the bus, then swap in the
+real `commander` on PATH when you are in the lab.  NOTHING here is a real
+measurement.
 
 It remembers what firmware was "flashed" to each serial number (in a small
 file in /tmp) so that the pretend current depends on the pretend firmware,
 which is what the real chip does too:
-    *em2*  -> a few microamps (deep sleep)
+    *ps1*  -> a few microamps (PS1 ULP sleep, CPU off, RAM retained)
     *adv*  -> tens of microamps average (BLE advertising)
-    *em0*  -> a few milliamps (CPU awake)
+    *ps4*  -> a few milliamps (PS4 active, CPU running)
+
+Note it only answers to `rps load`, not `flash`.  That is deliberate: the
+SiWx917 bootloader accepts RPS images only, so a harness that still called
+`commander flash foo.s37` would fail here exactly as it would on the bench.
 """
 
 import json
@@ -24,14 +29,14 @@ import sys
 import time
 from pathlib import Path
 
-STATE_DIR = Path("/tmp/fake_efr32")
+STATE_DIR = Path("/tmp/fake_siwx917")
 STATE_DIR.mkdir(exist_ok=True)
 
 # (mean mA, std mA) for each pretend firmware type — ILLUSTRATIVE ONLY
 PROFILES = {
-    "em2": (0.0018, 0.00020),
+    "ps1": (0.0018, 0.00020),
     "adv": (0.0450, 0.00400),
-    "em0": (2.6000, 0.02000),
+    "ps4": (2.6000, 0.02000),
 }
 
 
@@ -41,7 +46,7 @@ def state_file(serial: str) -> Path:
 
 def load(serial: str) -> dict:
     p = state_file(serial)
-    return json.loads(p.read_text()) if p.exists() else {"firmware": "em0"}
+    return json.loads(p.read_text()) if p.exists() else {"firmware": "ps4"}
 
 
 def save(serial: str, st: dict) -> None:
@@ -52,7 +57,7 @@ def profile_for(firmware_name: str):
     for key, prof in PROFILES.items():
         if key in firmware_name.lower():
             return prof
-    return PROFILES["em0"]
+    return PROFILES["ps4"]
 
 
 def main(argv):
@@ -74,8 +79,9 @@ def main(argv):
     if words[:2] == ["adapter", "probe"]:
         print("Kit Information:")
         print("=" * 39)
-        print("Kit Name        : EFR32xG24 Wireless Pro Kit (FAKE)")
-        print("Kit Part Number : xG24-PK6010A")
+        print("Kit Name        : SiWx917 Wi-Fi 6 and Bluetooth LE Pro Kit (FAKE)")
+        print("Kit Part Number : SiWx917-PK6031A")
+        print("Radio Board     : BRD4338A")
         print(f"J-Link Serial   : {serial}")
         print("Debug Mode      : MCU")
         print("AEM Supported   : 1")
@@ -83,14 +89,14 @@ def main(argv):
         print("DONE")
         return 0
 
-    if words[:1] == ["flash"]:
-        fw = words[1] if len(words) > 1 else "unknown"
+    if words[:2] == ["rps", "load"]:
+        fw = words[2] if len(words) > 2 else "unknown"
         st["firmware"] = Path(fw).name
         save(serial, st)
-        print(f"Parsing file {fw}...")
-        print("Writing 65536 bytes starting at address 0x08000000")
-        print("Comparing range 0x08000000 - 0x0800FFFF (64 KiB)")
-        print("Programming range 0x08000000 - 0x0800FFFF (64 KiB)")
+        print(f"Parsing RPS file {fw}...")
+        print("RPS header OK, image type M4, 65536 bytes")
+        print("Erasing flash...")
+        print("Writing image to flash...")
         print("DONE")
         return 0
 
@@ -99,7 +105,7 @@ def main(argv):
         print("DONE")
         return 0
 
-    mean, std = profile_for(st.get("firmware", "em0"))
+    mean, std = profile_for(st.get("firmware", "ps4"))
 
     if words[:2] == ["aem", "measure"]:
         w = int(opts.get("windowlength", "100"))

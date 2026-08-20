@@ -1,5 +1,8 @@
 results/
 __pycache__/
 .pytest_cache/
+firmware/*.rps
 firmware/*.s37
 firmware/*.hex
+firmware/*.bin
+.DS_Store

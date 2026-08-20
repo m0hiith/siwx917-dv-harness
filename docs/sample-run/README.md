@@ -2,7 +2,7 @@
 
 These files are the output of one complete run of the harness against the
 **simulated** Simplicity Commander (`tools/fake_commander.py`), captured on
-2026-08-19. They are committed so a reader can see the shape of the output
+2026-08-20. They are committed so a reader can see the shape of the output
 without installing anything or owning a board.
 
 **No physical device was measured.** Hardware access is pending a college MOU.
@@ -20,9 +20,9 @@ the statistics are computed over independent runs rather than slices of one
 run, the limits are read from `config.yaml`, and the whole thing runs
 unattended and writes its own report.
 
-One thing worth noticing, and worth being upfront about: the EM2 error bar
-here is about 0.27% of the reading. No real on-board AEM resolves single-digit
-microamps that tightly — at ~1.8 uA the instrument's own error is a large
-fraction of the value. That unrealistically tight spread is an artifact of the
-simulator, and it is exactly the number that will get worse, and more honest,
-on real hardware.
+One thing worth noticing, and worth being upfront about: the PS1 sleep error
+bar here is about 0.22% of the reading. No real on-board AEM resolves
+single-digit microamps that tightly — at ~1.8 uA the instrument's own error is
+a large fraction of the value. That unrealistically tight spread is an artifact
+of the simulator, and it is exactly the number that will get worse, and more
+honest, on real hardware.

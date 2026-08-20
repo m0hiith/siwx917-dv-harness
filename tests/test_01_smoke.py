@@ -22,7 +22,7 @@ def test_kit_has_current_meter(dut):
 
 
 def test_flash_and_reset(dut, cfg):
-    fw = Path(cfg["firmware"]["em0_busy"])
+    fw = Path(cfg["firmware"]["ps4_active"])
     fw.parent.mkdir(exist_ok=True)
     if not fw.exists():
         fw.write_bytes(b"placeholder")   # fake board doesn't care about contents

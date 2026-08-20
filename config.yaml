@@ -12,12 +12,14 @@ boards:
   peer:
     serial: "440654321"        # <- second board, used from Level 2 onwards
 
-# Firmware images the tests flash.  Build these in Simplicity Studio / VS Code
-# and copy the .s37 here.  Names matter for the FAKE commander only.
+# Firmware images the tests flash.  Build these in Simplicity Studio / VS Code,
+# convert them to RPS (`commander rps create`) and copy the .rps here.
+# SiWx917 bootloaders only accept RPS images; .s37/.hex are not flashable.
+# Names matter for the FAKE commander only.
 firmware:
-  em0_busy:   firmware/em0_busy.s37      # CPU awake in a loop
-  em2_sleep:  firmware/em2_sleep.s37     # deep sleep, RTC running
-  ble_adv:    firmware/ble_adv_1000ms.s37  # SoC Empty advertising at 1 s
+  ps4_active: firmware/ps4_active.rps     # PS4 active state, CPU running
+  ps1_sleep:  firmware/ps1_sleep.rps      # PS1 ULP sleep, CPU off, RAM retained
+  ble_adv:    firmware/ble_adv_1000ms.rps # BLE 5.4 advertising at 1 s
 
 # Power test settings
 power:
@@ -26,6 +28,6 @@ power:
   datarate_hz: 1000    # samples per second from AEM
   repeats: 5           # how many independent runs -> gives you mean AND std
   limits_mA:           # PASS if mean current is BELOW this. Start loose, tighten
-    em0_busy:  5.0     #   once you have real numbers + datasheet in hand.
-    em2_sleep: 0.010
-    ble_adv:   0.100
+    ps4_active: 5.0    #   once you have real numbers + datasheet in hand.
+    ps1_sleep:  0.010
+    ble_adv:    0.100

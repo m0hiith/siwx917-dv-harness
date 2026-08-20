@@ -1,12 +1,12 @@
 """
-device.py  —  the "remote control" for one Silicon Labs board.
+device.py  —  the "remote control" for one Silicon Labs SiWx917 board.
 
 PLAIN ENGLISH
 -------------
 Silicon Labs gives you a command-line tool called Simplicity Commander.
 You type things like:
 
-    commander flash app.s37 --serialno 440123456
+    commander rps load app.rps --serialno 440123456
     commander device reset --serialno 440123456
     commander aem measure --windowlength 100 --serialno 440123456
 
@@ -17,7 +17,7 @@ you mean when two are plugged in.
 This file is a robot that types those commands for you and READS the answer
 back into Python numbers, so a test can say:
 
-    dut.flash("firmware/em2_sleep.s37")
+    dut.flash("firmware/ps1_sleep.rps")
     dut.reset()
     amps = dut.measure_current(window_ms=100)["current_mA"]
 
@@ -96,11 +96,17 @@ class Device:
         return self.probe().get("AEM Supported", "0").strip() == "1"
 
     def flash(self, firmware: str | Path) -> None:
-        """Put a new program (.s37 / .hex / .bin) into the chip."""
+        """Put a new program into the chip.  Wraps `commander rps load`.
+
+        SiWx917 parts boot from an RPS image (.rps), not a raw .s37/.hex —
+        the bootloader reads an RPS header to check the image before running
+        it.  Build the app in Studio/VS Code, convert it with
+        `commander rps create`, and point config.yaml at the .rps.
+        """
         firmware = Path(firmware)
         if not firmware.exists():
             raise FileNotFoundError(firmware)
-        self._run("flash", str(firmware))
+        self._run("rps", "load", str(firmware))
 
     def reset(self) -> None:
         """Switch the chip off and on again (hardware reset via the debugger)."""
