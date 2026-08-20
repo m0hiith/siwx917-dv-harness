@@ -28,15 +28,19 @@ cycles. The error bars are the AEM's own resolution, not the simulator's spread
 
 ## Folder map
 ```
-config.yaml                 <- your bench: serial numbers, firmware paths, pass/fail limits
+config.yaml                 <- your bench: serials, firmware paths, limits, meter resolution
 dvharness/device.py         <- the "remote control" around Simplicity Commander
-dvharness/stats.py          <- mean / std / min / max helper
+dvharness/stats.py          <- mean / std / sem, and the PASS/FAIL/INCONCLUSIVE rule
+dvharness/firmware.py       <- refuses to invent a firmware image for real hardware
+dvharness/manifest.py       <- the paper trail written into every results folder
 tests/conftest.py           <- gives every test a ready-made board + results folder
 tests/test_01_smoke.py      <- can we talk to the kit, flash it, reset it?
 tests/test_02_power.py      <- Level 1: current in PS4 / PS1 / BLE-advertising
+tests/test_03_manifest.py   <- is each results folder self-describing?
+tests/test_04_verdict.py    <- the INCONCLUSIVE cases the fake board never produces
 tools/fake_commander.py     <- a pretend board so you can practise without hardware
 firmware/                   <- put your built .rps images here
-results/<timestamp>/        <- raw CSVs, per-run table, summary JSON, chart, JUnit XML
+results/<timestamp>/        <- raw CSVs, per-run table, summary JSON, chart, manifest, JUnit XML
 ```
 
 ## Run it with NO hardware (practice mode) — works right now
@@ -102,9 +106,41 @@ cannot answer the question, which is a different problem from the part being
 out of spec, and it needs a different fix: more runs, a tighter setup, or a
 limit that is not sitting inside the meter's own error.
 
-## What comes next (not in this folder yet)
-- Level 2: `test_03_per_sweep.py` — two boards running the WiSeConnect PER
-  (packet error rate) examples, PER vs transmit power, plus a Wi-Fi
-  interference comparison.
-- Level 3: `test_04_ota_loop.py` — 100 over-the-air update cycles, interrupted
-  update + rollback, overnight soak, flaky-test quarantine.
+## Scope: one pillar, finished, on purpose
+
+DV for a wireless part has three pillars — power, RF link quality, and update
+reliability. This repo does **one** of them, end to end, and stops.
+
+That was a choice, not a stopping point. The two remaining pillars are each
+blocked on something I do not have, and building half of either against a
+simulator would produce exactly the thing this README spends its first section
+warning about: numbers that look like measurements and are not.
+
+| Pillar | Status | Blocked on |
+|---|---|---|
+| 1. Power (`test_02_power.py`) | **Done** — this repo | — |
+| 2. RF link quality (`test_05_per_sweep.py`) | Designed, not written | A second board — PER vs transmit power needs a transmitter *and* a receiver |
+| 3. Update reliability (`test_06_ota_loop.py`) | Designed, not written | Hardware, plus overnight time — 100 OTA cycles with interrupted-update rollback is a soak test, not a demo |
+
+The measurement flow generalises to both: same `Device` wrapper, same
+`results/<timestamp>/` layout, same mean-and-spread reporting, same manifest.
+
+## Known gaps, named on purpose
+
+These are real, they are all reproducible, and none of them survives a
+one-day budget. Naming them is cheaper than having them found:
+
+- **No Commander retry logic.** `Device._run()` runs a command once. Real
+  benches produce transient USB and J-Link failures, and the right fix is a
+  bounded retry with backoff around `_run` — not `pytest-rerunfailures` around
+  the test, which would also retry genuine measurement failures.
+- **`subprocess.TimeoutExpired` escapes `_run` unwrapped.** Every other
+  failure path raises `CommanderError` with the full output attached; a hung
+  Commander raises the bare subprocess exception instead, so the one failure
+  where you most want to see what the tool printed is the one where you don't.
+- **`test_99_make_plot` breaks under `pytest -k`.** It reads the
+  `power_summary.json` the power tests write, so selecting it alone
+  (`pytest -k make_plot`) fails with `FileNotFoundError`. It is an implicit
+  dependency between tests, which is a smell; the fix is to make it skip when
+  the summary is absent, or to move plotting into a session-teardown fixture
+  next to the manifest.
