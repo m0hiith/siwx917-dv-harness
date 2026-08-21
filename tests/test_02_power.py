@@ -26,6 +26,13 @@ MODES = ["ps4_active", "ps1_sleep", "ble_adv"]
 
 @pytest.mark.parametrize("mode", MODES)
 def test_current_in_mode(dut, cfg, results_dir, mode, record_property, firmware):
+    # The capability check (test_01_smoke.py::test_kit_has_current_meter) is
+    # supposed to FAIL when config expects a meter the hardware doesn't have
+    # -- that mismatch is a real finding. This test just can't do its job
+    # without a meter, so it skips instead of failing on the same fact twice.
+    if not dut.has_aem():
+        pytest.skip("no AEM on this kit")
+
     pw = cfg["power"]
     # Refuses to invent an image unless we are on the fake board -- see
     # dvharness/firmware.py. Never flash a fabricated .rps into real silicon.

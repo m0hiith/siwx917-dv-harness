@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="3" skipped="3" tests="28" time="2.797" timestamp="2026-08-21T12:55:16.401506+05:30" hostname="ICTECE-L514-30"><testcase classname="tests.test_01_smoke" name="test_kit_answers" file="tests\test_01_smoke.py" line="14" time="0.560" /><testcase classname="tests.test_01_smoke" name="test_kit_has_current_meter" file="tests\test_01_smoke.py" line="20" time="0.432"><failure message="AssertionError: This kit has no AEM — see README 'no AEM' section&#10;assert False&#10; +  where False = has_aem()&#10; +    where has_aem = Device(serial='446000788', commander='C:/SiliconLabs/SimplicityCommander/Simplicity Commander CLI/commander-cli.exe', timeout_s=120).has_aem">dut = Device(serial='446000788', commander='C:/SiliconLabs/SimplicityCommander/Simplicity Commander CLI/commander-cli.exe', timeout_s=120)
+
+    def test_kit_has_current_meter(dut):
+        # If this fails on your kit, power tests need an external meter (e.g. PPK2)
+&gt;       assert dut.has_aem(), "This kit has no AEM — see README 'no AEM' section"
+E       AssertionError: This kit has no AEM — see README 'no AEM' section
+E       assert False
+E        +  where False = has_aem()
+E        +    where has_aem = Device(serial='446000788', commander='C:/SiliconLabs/SimplicityCommander/Simplicity Commander CLI/commander-cli.exe', timeout_s=120).has_aem
+
+tests\test_01_smoke.py:23: AssertionError</failure></testcase><testcase classname="tests.test_01_smoke" name="test_flash_and_reset" file="tests\test_01_smoke.py" line="25" time="0.000"><failure message="FileNotFoundError: Firmware image for mode 'ps4_active' is missing: firmware\ps4_active.rps&#10;config.yaml commander is 'C:/SiliconLabs/SimplicityCommander/Simplicity Commander CLI/commander-cli.exe', which is treated as REAL hardware, so this harness will NOT invent an image to flash.&#10;Build the application, convert it with `commander rps create`, and put the resulting .rps at exactly that path.">dut = Device(serial='446000788', commander='C:/SiliconLabs/SimplicityCommander/Simplicity Commander CLI/commander-cli.exe', timeout_s=120)
+firmware = &lt;function firmware.&lt;locals&gt;._get at 0x000001F82A6D76A0&gt;
+
+    def test_flash_and_reset(dut, firmware):
+&gt;       fw = firmware("ps4_active")
+             ^^^^^^^^^^^^^^^^^^^^^^
+
+tests\test_01_smoke.py:27: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests\conftest.py:60: in _get
+    path = resolve_firmware(cfg, mode)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+cfg = {'commander': 'C:/SiliconLabs/SimplicityCommander/Simplicity Commander CLI/commander-cli.exe', 'boards': {'dut': {'ser...dv': 'firmware/ble_adv_1000ms.rps'}, 'power': {'settle_s': 2, 'duration_s': 2, 'datarate_hz': 1000, 'repeats': 5, ...}}
+mode = 'ps4_active'
+
+    def resolve_firmware(cfg: dict, mode: str) -&gt; Path:
+        """Return the .rps path for `mode`, creating a stub only in practice mode.
+    
+        Raises KeyError if the mode is not in config.yaml, and FileNotFoundError
+        (naming the missing path) if the image is absent and the commander is real.
+        """
+        try:
+            path = Path(cfg["firmware"][mode])
+        except KeyError as exc:
+            known = ", ".join(sorted(cfg.get("firmware", {}))) or "(none)"
+            raise KeyError(
+                f"config.yaml has no firmware entry for mode {mode!r}. Known modes: {known}"
+            ) from exc
+    
+        if path.exists():
+            return path
+    
+        commander = cfg.get("commander", "")
+        if not is_practice_mode(commander):
+&gt;           raise FileNotFoundError(
+                f"Firmware image for mode {mode!r} is missing: {path}\n"
+                f"config.yaml commander is {commander!r}, which is treated as REAL "
+                f"hardware, so this harness will NOT invent an image to flash.\n"
+                f"Build the application, convert it with `commander rps create`, and "
+                f"put the resulting .rps at exactly that path."
+            )
+E           FileNotFoundError: Firmware image for mode 'ps4_active' is missing: firmware\ps4_active.rps
+E           config.yaml commander is 'C:/SiliconLabs/SimplicityCommander/Simplicity Commander CLI/commander-cli.exe', which is treated as REAL hardware, so this harness will NOT invent an image to flash.
+E           Build the application, convert it with `commander rps create`, and put the resulting .rps at exactly that path.
+
+dvharness\firmware.py:64: FileNotFoundError</failure></testcase><testcase classname="tests.test_01_smoke" name="test_refuses_to_fabricate_firmware_for_real_hardware" file="tests\test_01_smoke.py" line="31" time="0.006" /><testcase classname="tests.test_01_smoke" name="test_practice_mode_detection_fails_closed" file="tests\test_01_smoke.py" line="47" time="0.000" /><testcase classname="tests.test_02_power" name="test_current_in_mode[ps4_active]" file="tests\test_02_power.py" line="26" time="0.430"><skipped type="pytest.skip" message="no AEM on this kit">C:\Users\EECE-514-30\siwx917-dv-harness\tests\test_02_power.py:34: no AEM on this kit</skipped></testcase><testcase classname="tests.test_02_power" name="test_current_in_mode[ps1_sleep]" file="tests\test_02_power.py" line="26" time="0.441"><skipped type="pytest.skip" message="no AEM on this kit">C:\Users\EECE-514-30\siwx917-dv-harness\tests\test_02_power.py:34: no AEM on this kit</skipped></testcase><testcase classname="tests.test_02_power" name="test_current_in_mode[ble_adv]" file="tests\test_02_power.py" line="26" time="0.422"><skipped type="pytest.skip" message="no AEM on this kit">C:\Users\EECE-514-30\siwx917-dv-harness\tests\test_02_power.py:34: no AEM on this kit</skipped></testcase><testcase classname="tests.test_02_power" name="test_99_make_plot" file="tests\test_02_power.py" line="91" time="0.261"><failure message="FileNotFoundError: [Errno 2] No such file or directory: 'C:\\Users\\EECE-514-30\\siwx917-dv-harness\\results\\2026-08-21_12-55-16\\power_summary.json'">results_dir = WindowsPath('C:/Users/EECE-514-30/siwx917-dv-harness/results/2026-08-21_12-55-16')
+cfg = {'commander': 'C:/SiliconLabs/SimplicityCommander/Simplicity Commander CLI/commander-cli.exe', 'boards': {'dut': {'ser...dv': 'firmware/ble_adv_1000ms.rps'}, 'power': {'settle_s': 2, 'duration_s': 2, 'datarate_hz': 1000, 'repeats': 5, ...}}
+practice_mode = False
+
+    def test_99_make_plot(results_dir, cfg, practice_mode):
+        """Runs last: turn power_summary.json into a bar chart with error bars."""
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+    
+&gt;       summary = json.loads((results_dir / "power_summary.json").read_text())
+                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\test_02_power.py:98: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+..\AppData\Local\Programs\Python\Python312\Lib\pathlib.py:1027: in read_text
+    with self.open(mode='r', encoding=encoding, errors=errors) as f:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = WindowsPath('C:/Users/EECE-514-30/siwx917-dv-harness/results/2026-08-21_12-55-16/power_summary.json')
+mode = 'r', buffering = -1, encoding = 'locale', errors = None, newline = None
+
+    def open(self, mode='r', buffering=-1, encoding=None,
+             errors=None, newline=None):
+        """
+        Open the file pointed to by this path and return a file object, as
+        the built-in open() function does.
+        """
+        if "b" not in mode:
+            encoding = io.text_encoding(encoding)
+&gt;       return io.open(self, mode, buffering, encoding, errors, newline)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       FileNotFoundError: [Errno 2] No such file or directory: 'C:\\Users\\EECE-514-30\\siwx917-dv-harness\\results\\2026-08-21_12-55-16\\power_summary.json'
+
+..\AppData\Local\Programs\Python\Python312\Lib\pathlib.py:1013: FileNotFoundError</failure></testcase><testcase classname="tests.test_03_manifest" name="test_manifest_written_at_session_start" file="tests\test_03_manifest.py" line="20" time="0.008" /><testcase classname="tests.test_03_manifest" name="test_manifest_records_the_config_actually_used" file="tests\test_03_manifest.py" line="32" time="0.000" /><testcase classname="tests.test_03_manifest" name="test_manifest_names_this_commit" file="tests\test_03_manifest.py" line="39" time="0.000" /><testcase classname="tests.test_03_manifest" name="test_sha256_matches_the_file_on_disk" file="tests\test_03_manifest.py" line="48" time="0.002" /><testcase classname="tests.test_03_manifest" name="test_sha256_reports_a_missing_file_instead_of_inventing_one" file="tests\test_03_manifest.py" line="57" time="0.001" /><testcase classname="tests.test_03_manifest" name="test_porcelain_parsing_keeps_the_whole_path" file="tests\test_03_manifest.py" line="63" time="0.000" /><testcase classname="tests.test_03_manifest" name="test_open_manifest_is_marked_in_progress" file="tests\test_03_manifest.py" line="74" time="0.114" /><testcase classname="tests.test_04_verdict" name="test_sem_is_std_over_sqrt_n" file="tests\test_04_verdict.py" line="32" time="0.000" /><testcase classname="tests.test_04_verdict" name="test_single_value_has_no_spread" file="tests\test_04_verdict.py" line="39" time="0.000" /><testcase classname="tests.test_04_verdict" name="test_summarize_still_rejects_nothing_to_summarize" file="tests\test_04_verdict.py" line="44" time="0.000" /><testcase classname="tests.test_04_verdict" name="test_comfortably_below_the_limit_passes" file="tests\test_04_verdict.py" line="52" time="0.000" /><testcase classname="tests.test_04_verdict" name="test_comfortably_above_the_limit_fails" file="tests\test_04_verdict.py" line="57" time="0.000" /><testcase classname="tests.test_04_verdict" name="test_sitting_on_the_limit_is_inconclusive_not_a_pass" file="tests\test_04_verdict.py" line="62" time="0.000" /><testcase classname="tests.test_04_verdict" name="test_a_tiny_spread_cannot_buy_a_pass_the_meter_never_earned" file="tests\test_04_verdict.py" line="70" time="0.000" /><testcase classname="tests.test_04_verdict" name="test_uncertainty_is_the_larger_of_sem_and_floor" file="tests\test_04_verdict.py" line="89" time="0.000" /><testcase classname="tests.test_04_verdict" name="test_verdict_explains_itself" file="tests\test_04_verdict.py" line="99" time="0.000" /><testcase classname="tests.test_04_verdict" name="test_refuses_to_judge_without_an_instrument_floor" file="tests\test_04_verdict.py" line="112" time="0.000" /><testcase classname="tests.test_04_verdict" name="test_rejects_a_negative_floor" file="tests\test_04_verdict.py" line="117" time="0.000" /><testcase classname="tests.test_04_verdict" name="test_every_limited_mode_has_an_instrument_floor" file="tests\test_04_verdict.py" line="125" time="0.055" /></testsuite></testsuites>

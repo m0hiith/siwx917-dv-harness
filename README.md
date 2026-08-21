@@ -6,6 +6,62 @@ loads firmware, resets the chip, measures how much current it draws, repeats
 that several times, and writes a report with averages, spread and a chart.
 Nobody touches the board while it runs.
 
+## Hardware capability — what this specific board can and can't do
+
+Board used: **SiWx917-DK2605A (BRD2605A)**, J-Link serial `446000788`.
+
+This is the output of `commander adapter probe --serialno 446000788`, pasted
+exactly as it printed — nothing edited, nothing rounded:
+
+```
+Kit Information:
+=======================================
+Kit Name        : SiWx917 Wi-Fi 6 and Bluetooth LE Dev Kit
+Kit Part Number : DK2605A Rev. A00
+J-Link Serial   : 446000788
+Debug Mode      : MCU
+Debug Part      : SiWG917M111MGTBA
+AEM Supported   : False
+VCOM Supported  : True
+IP Supported    : False
+VCOM Port       : COM3
+IP Address      : Unknown
+
+Firmware Information:
+=======================================
+FW Version      : 2v0p2b426
+Available FW Ver: 2v1p1
+Upgrade by running "adapter fwupgrade --serialno 446000788"
+
+Board List:
+=======================================
+Name            : SiWG917 Dev Kit Board
+Part Number     : BRD2605A Rev. A02
+Serial Number   : 242501125
+Target Device   : SiWG917M111MGTBA
+
+DONE
+```
+
+`AEM Supported : False` is the load-bearing line. This board's on-board
+debugger has no current meter, so nothing downstream of it can produce a
+power number, no matter how the harness is configured.
+
+| Test | Runs on this board? | Why |
+|---|---|---|
+| `test_kit_answers` | **Yes** | Only needs `adapter probe` to answer with the right J-Link serial |
+| `test_kit_has_current_meter` | Runs, **fails** (correctly) | `AEM Supported : False` above — the assertion is telling the truth |
+| `test_flash_and_reset` | **No** | No `firmware/ps4_active.rps` built yet; the harness refuses to fabricate one for real hardware ([`firmware.py`](dvharness/firmware.py)) |
+| `test_current_in_mode` × 3 (power) | **No** | Needs a flashed image *and* a current meter — this board has neither wired up |
+| `test_99_make_plot` | **No** | Reads `power_summary.json`, which only the power tests above write |
+| `test_03_manifest.py` (all) | **Yes** | Only needs a `Device` object (serial + commander) plus git/host info — no AEM, no firmware image |
+| `test_04_verdict.py` (all) | **Yes** | Pure arithmetic over `stats.py` against `config.yaml` — no hardware call at all |
+| `test_refuses_to_fabricate...`, `test_practice_mode_detection...` | **Yes** | Pure logic, no device involved |
+
+Power measurement needs either a BRD4002A Wireless Pro Kit mainboard or an
+external meter such as a PPK2 — neither is currently available, so the
+harness reports **no power numbers** rather than estimated ones.
+
 ## Status — read this first
 
 The numbers this repo produces right now come from a **simulated** Simplicity

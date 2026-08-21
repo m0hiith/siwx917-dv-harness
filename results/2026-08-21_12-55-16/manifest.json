@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "session": {
+    "started_utc": "2026-08-21T07:25:16+00:00",
+    "ended_utc": "2026-08-21T07:25:19+00:00"
+  },
+  "host": {
+    "hostname": "ICTECE-L514-30",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "python": "3.12.10"
+  },
+  "git": {
+    "available": true,
+    "commit": "0d0d19c8fd65fff0ce14f9241b0ab314c675b960",
+    "branch": "main",
+    "dirty": true,
+    "dirty_files": [
+      "README.md",
+      "config.yaml",
+      "tests/test_02_power.py"
+    ]
+  },
+  "commander": {
+    "configured": "C:/SiliconLabs/SimplicityCommander/Simplicity Commander CLI/commander-cli.exe",
+    "version": "Simplicity Commander 1v25p0b1995"
+  },
+  "config_snapshot": {
+    "commander": "C:/SiliconLabs/SimplicityCommander/Simplicity Commander CLI/commander-cli.exe",
+    "boards": {
+      "dut": {
+        "serial": "446000788"
+      },
+      "peer": {
+        "serial": "440654321"
+      }
+    },
+    "firmware": {
+      "ps4_active": "firmware/ps4_active.rps",
+      "ps1_sleep": "firmware/ps1_sleep.rps",
+      "ble_adv": "firmware/ble_adv_1000ms.rps"
+    },
+    "power": {
+      "settle_s": 2,
+      "duration_s": 2,
+      "datarate_hz": 1000,
+      "repeats": 5,
+      "limits_mA": {
+        "ps4_active": 5.0,
+        "ps1_sleep": 0.01,
+        "ble_adv": 0.1
+      },
+      "instrument_floor_mA": {
+        "ps4_active": 0.1,
+        "ps1_sleep": 0.001,
+        "ble_adv": 0.001
+      }
+    }
+  },
+  "firmware_flashed": {}
+}

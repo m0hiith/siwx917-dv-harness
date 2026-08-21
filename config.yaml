@@ -4,13 +4,13 @@
 # How to launch Simplicity Commander.
 #   In the lab  : "commander"          (after adding it to PATH)
 #   On the bus  : "python3 tools/fake_commander.py"   (pretend board)
-commander: "python3 tools/fake_commander.py"
+commander: "C:/SiliconLabs/SimplicityCommander/Simplicity Commander CLI/commander-cli.exe"
 
 boards:
   dut:
-    serial: "440123456"        # <- replace with the J-Link serial on your kit
+    serial: "446000788"        # <- J-Link serial of the connected SiWG917 Dev Kit (BRD2605A)
   peer:
-    serial: "440654321"        # <- second board, used from Level 2 onwards
+    serial: "440654321"        # <- second board, used from Level 2 onwards (none connected yet)
 
 # Firmware images the tests flash.  Build these in Simplicity Studio / VS Code,
 # convert them to RPS (`commander rps create`) and copy the .rps here.
