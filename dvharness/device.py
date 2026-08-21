@@ -86,8 +86,8 @@ class Device:
     def probe(self) -> dict[str, str]:
         """Ask the kit who it is.  Returns a dict of 'Key': 'Value' lines.
 
-        The interesting key is 'AEM Supported' — '1' means this kit has the
-        built-in current meter and measure_current() will work.
+        The interesting key is 'AEM Supported' — truthy ('1'/'True') means the
+        kit has the built-in current meter and measure_current() will work.
         """
         out = self._run("adapter", "probe")
         info: dict[str, str] = {}
@@ -99,7 +99,12 @@ class Device:
         return info
 
     def has_aem(self) -> bool:
-        return self.probe().get("AEM Supported", "0").strip() == "1"
+        # Commander builds spell this differently: some print "1", the v1.25
+        # CLI prints "True"/"False". Only a positively recognised yes counts —
+        # an unknown spelling means "no meter", because skipping a power test
+        # is recoverable and trusting a meter that isn't there is not.
+        yes = self.probe().get("AEM Supported", "").strip().lower()
+        return yes in ("1", "true")
 
     def commander_version(self) -> str:
         """The Commander build string, recorded in the results manifest.

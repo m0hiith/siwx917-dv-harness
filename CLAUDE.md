@@ -2,12 +2,17 @@
 Purpose: automated design-validation style measurements on Silicon Labs SiWx917 kits
 (power, radio link, reliability), runnable unattended, reporting mean ± std.
 
-Hardware: two Silicon Labs SiWx917 boards over USB — BRD4338A radio board on a
-BRD4002A Wireless Pro Kit mainboard (kit SiWx917-PK6031A; the mainboard carries
-the AEM). Board "dut" = device under test, board "peer" = second radio for link
-tests. Serial numbers live in config.yaml. Firmware images are RPS (.rps) and
-Commander loads them with `rps load` — SiWx917 does not boot a raw .s37/.hex.
-Tools on PATH: commander (Simplicity Commander), python3.
+Hardware on the bench: one SiWx917 Wi-Fi 6 + BLE Dev Kit, DK2605A (board
+BRD2605A, chip SiWG917M111MGTBA). `commander adapter probe` reports
+"AEM Supported: False" — this kit has NO on-board current meter, so power
+measurement is impossible here, not merely inaccurate. Power numbers need a
+BRD4338A radio board on a BRD4002A Wireless Pro Kit mainboard (kit
+SiWx917-PK6031A; that mainboard carries the AEM) or an external meter such as
+a Nordic PPK2 wired into Device.dump_current(). Board "dut" = device under
+test, board "peer" = second radio for future link tests (in config.yaml, not
+connected). Serial numbers and the Simplicity Commander path live in
+config.yaml. Firmware images are RPS (.rps) and Commander loads them with
+`rps load` — SiWx917 does not boot a raw .s37/.hex.
 Practice mode: config.yaml commander = "python3 tools/fake_commander.py".
 
 Rules for any code you write here:

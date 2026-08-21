@@ -9,6 +9,7 @@ Before measuring anything, prove the plumbing works:
 
 import pytest
 
+from dvharness.device import Device
 from dvharness.firmware import is_practice_mode, resolve_firmware
 
 
@@ -21,6 +22,23 @@ def test_kit_answers(dut):
 def test_kit_has_current_meter(dut):
     # If this fails on your kit, power tests need an external meter (e.g. PPK2)
     assert dut.has_aem(), "This kit has no AEM — see README 'no AEM' section"
+
+
+def test_aem_detection_reads_both_commander_spellings():
+    """The fake tool prints 'AEM Supported : 1'; Commander v1.25 prints
+    'True'/'False'. has_aem() must read both, and anything it does not
+    positively recognise must count as NO meter: skipping a power test is
+    recoverable, trusting a meter that is not there is not.
+    """
+    d = Device(serial="0", commander="commander")
+    for spelling, expected in [
+        ("1", True), ("True", True), ("true", True),
+        ("0", False), ("False", False), ("", False), ("Unknown", False),
+    ]:
+        d.probe = lambda s=spelling: {"AEM Supported": s}
+        assert d.has_aem() is expected, f"'AEM Supported : {spelling}' misread"
+    d.probe = lambda: {}
+    assert d.has_aem() is False, "a probe with no AEM line must mean no meter"
 
 
 def test_flash_and_reset(dut, firmware):

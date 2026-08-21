@@ -64,16 +64,24 @@ harness reports **no power numbers** rather than estimated ones.
 
 ## Status — read this first
 
-The numbers this repo produces right now come from a **simulated** Simplicity
-Commander (`tools/fake_commander.py`), not from a board. Hardware access is
-pending a college MOU, so the harness was built and validated against a fake
-device that emits the same output format as the real tool. Everything under
+Two kinds of results live in this repo, and they must not be confused:
+
+**Real:** the suite has run against the physical DK2605A above — see
+`results/last_run.xml` and the `manifest.json` in each `results/<timestamp>/`
+folder. That run proves device control (the kit answers to its serial, the
+capability check correctly catches the missing AEM, the firmware guard
+correctly refuses to flash an image that was never built). It produces **no
+power numbers**, because this board has no meter to produce them with.
+
+**Simulated:** every power *number* in this repo comes from the fake
+Simplicity Commander (`tools/fake_commander.py`), which emits the same output
+format as the real tool with made-up values. Everything under
 `docs/sample-run/` is illustrative: it shows that the measurement flow, the
 statistics, the limit checks and the reporting work end to end. It is **not a
-measurement of any physical device** and no number here should be quoted as one.
+measurement of any physical device** and no number there should be quoted as one.
 
-Switching to real hardware is one line in `config.yaml` (`commander: "commander"`)
-plus real serial numbers and real `.rps` images. No test code changes.
+Getting real power numbers needs no test-code changes — only hardware with a
+meter (see the capability section above) and real `.rps` images in `firmware/`.
 
 ![Sample output — simulated](docs/sample-run/power_by_mode.png)
 
@@ -124,10 +132,11 @@ same shaped output as the real tool with made-up numbers.
    header first, so the conversion step is not optional.
 5. `python3 -m pytest` — same command, real numbers.
 
-## If `adapter probe` says `AEM Supported : 0`
-Your kit's on-board debugger has no current meter. On SiWx917 the AEM lives on
-the BRD4002A Wireless Pro Kit mainboard, so a bare BRD4338A radio board on a
-plain adapter will report `0`. Options: put the radio board on a BRD4002A WPK
+## If `adapter probe` says `AEM Supported : False` (or `0`)
+Your kit's on-board debugger has no current meter — the DK2605A used here is
+one such kit. On SiWx917 the AEM lives on the BRD4002A Wireless Pro Kit
+mainboard, so a dev kit or a bare radio board on a plain adapter reports
+`False`. Options: put a BRD4338A radio board on a BRD4002A WPK
 (the SiWx917-PK6031A Pro Kit bundles both), or use an external meter such as a
 Nordic PPK2 (has a Python API). Then replace `Device.dump_current()` with a
 call to that meter; the tests don't change.
