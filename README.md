@@ -103,6 +103,7 @@ tests/test_02_power.py      <- Level 1: current in PS4 / PS1 / BLE-advertising
 tests/test_03_manifest.py   <- is each results folder self-describing?
 tests/test_04_verdict.py    <- the INCONCLUSIVE cases the fake board never produces
 tools/fake_commander.py     <- a pretend board so you can practise without hardware
+viz/index.html              <- open in a browser: replays a pytest run on a 3-D model of the kit
 firmware/                   <- put your built .rps images here
 results/<timestamp>/        <- raw CSVs, per-run table, summary JSON, chart, manifest, JUnit XML
 ```
