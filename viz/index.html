@@ -1,0 +1,1626 @@
+<meta charset="utf-8">
+<title>SiWx917 DV Bench</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<!--
+  SiWx917 DV Bench — a browser simulation of this repo's harness.
+
+  PLAIN ENGLISH
+  -------------
+  This page re-plays what `python3 -m pytest` does, step by step, on a 3-D
+  model of the BRD2605A dev kit: the same tests in the same order, the same
+  Commander commands device.py would type, the same fake numbers
+  tools/fake_commander.py would print, and the same PASS / FAIL /
+  INCONCLUSIVE arithmetic as dvharness/stats.py. Nothing here touches a real
+  board. "Real bench" mode replays results/last_run.xml from the physical
+  DK2605A run (no AEM, so no power numbers).
+-->
+<style>
+/* Layout: instrument bench — 3-D stage left, run console right, results ledger below. Single dark look on purpose (bench lighting). */
+:root {
+  --bg: #0d1115;
+  --panel: #141a20;
+  --panel-2: #1a222a;
+  --line: #27323c;
+  --fg: #e3e8ed;
+  --muted: #8b98a5;
+  --accent: #f0a43a;      /* AEM trace amber */
+  --cyan: #5cc8e8;        /* Commander traffic */
+  --pass: #4cc38a;
+  --fail: #ef5b5b;
+  --inc: #e8c547;
+  --skip: #7d8b99;
+  --f-display: "IBM Plex Sans Condensed", "Arial Narrow", system-ui, sans-serif;
+  --f-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { background: var(--bg); color: var(--fg); }
+body { font-family: var(--f-body); font-size: 14px; line-height: 1.45; }
+button, select, input { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
+code, pre, .mono { font-family: var(--f-mono); }
+
+.wrap { padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+
+/* ---------- header ---------- */
+.top { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; padding-block: 12px; border-bottom: 1px solid var(--line); background: var(--panel); }
+.brand { display: flex; align-items: center; gap: 12px; margin-right: auto; min-width: 0; }
+.mark { width: 30px; height: 30px; border-radius: 4px; background: #0a0c0e; border: 1px solid #3a4550; position: relative; flex: none; }
+.mark::before { content: ""; position: absolute; inset: 8px; background: #202629; border: 1px solid #5d666e; }
+.mark::after { content: ""; position: absolute; left: 3px; right: 3px; top: 13px; height: 2px; background: repeating-linear-gradient(90deg, #c9a24a 0 2px, transparent 2px 4px); }
+.brand h1 { font-family: var(--f-display); font-weight: 700; font-size: 20px; letter-spacing: .01em; margin: 0; line-height: 1.1; }
+.brand p { margin: 0; color: var(--muted); font-family: var(--f-mono); font-size: 11.5px; }
+
+.seg { display: inline-flex; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 3px; gap: 3px; }
+.seg button { background: transparent; border: 0; border-radius: 4px; padding: 5px 12px; text-align: left; line-height: 1.15; color: var(--muted); }
+.seg button small { display: block; font-family: var(--f-mono); font-size: 10.5px; opacity: .8; }
+.seg button[aria-pressed="true"] { background: var(--panel-2); color: var(--fg); box-shadow: inset 0 0 0 1px var(--line); }
+.seg button[aria-pressed="true"][data-mode="practice"] small { color: var(--cyan); }
+.seg button[aria-pressed="true"][data-mode="real"] small { color: var(--accent); }
+.seg button:disabled { cursor: not-allowed; }
+
+.runctl { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.speed { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; }
+.speed select { background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 5px 6px; }
+.btn { border: 1px solid var(--line); background: var(--panel-2); border-radius: 5px; padding: 7px 14px; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; }
+.btn:disabled { opacity: .4; cursor: not-allowed; }
+.btn.go { background: var(--accent); border-color: var(--accent); color: #1a1205; }
+.btn.go:not(:disabled):hover { filter: brightness(1.08); }
+.btn.stop { color: var(--fail); border-color: color-mix(in srgb, var(--fail) 45%, var(--line)); }
+.btn.stop:not(:disabled):hover { background: color-mix(in srgb, var(--fail) 14%, var(--panel-2)); }
+.btn .ico { width: 10px; height: 10px; flex: none; }
+.btn.go .ico { clip-path: polygon(0 0, 100% 50%, 0 100%); background: currentColor; }
+.btn.stop .ico { background: currentColor; }
+
+/* ---------- bench (stage + console) ---------- */
+.bench { display: grid; grid-template-columns: minmax(0, 1fr) 420px; gap: 14px; padding-block: 14px; }
+.stage { position: relative; height: clamp(380px, 64vh, 720px); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: #0b0f12; min-width: 0; }
+#gl { display: block; width: 100%; height: 100%; touch-action: none; }
+.hud { position: absolute; pointer-events: none; }
+.hud-tl { top: 12px; left: 12px; right: 140px; }
+.hud-step { font-family: var(--f-display); font-weight: 600; font-size: 17px; text-shadow: 0 1px 8px #000; }
+.hud-sub { font-family: var(--f-mono); font-size: 11.5px; color: var(--muted); text-shadow: 0 1px 6px #000; }
+.hud-tr { top: 10px; right: 10px; display: flex; gap: 6px; pointer-events: auto; }
+.hud-tr button { background: rgba(13,17,21,.82); border: 1px solid var(--line); border-radius: 4px; padding: 4px 9px; font-size: 12px; color: var(--muted); }
+.hud-tr button[aria-pressed="true"] { color: var(--fg); border-color: #3d4b57; }
+.hud-bl { left: 12px; bottom: 12px; right: 12px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.truth { font-family: var(--f-mono); font-size: 11px; padding: 4px 8px; border-radius: 4px; background: rgba(13,17,21,.85); border: 1px solid var(--line); }
+.truth.sim { color: var(--cyan); }
+.truth.real { color: var(--accent); }
+.legend { font-family: var(--f-mono); font-size: 11px; color: var(--muted); display: flex; gap: 10px; flex-wrap: wrap; background: rgba(13,17,21,.7); padding: 4px 8px; border-radius: 4px; }
+.legend i { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; vertical-align: 0; }
+.nogl { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; padding: 24px; color: var(--muted); }
+
+#labels { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.lbl { position: absolute; transform: translate(-50%, -100%); font-size: 11px; font-family: var(--f-mono); white-space: nowrap; color: var(--fg); padding-bottom: 14px; }
+.lbl span { background: rgba(10,13,16,.86); border: 1px solid #33404b; padding: 2px 6px; border-radius: 3px; }
+.lbl::after { content: ""; position: absolute; left: 50%; bottom: 0; width: 1px; height: 13px; background: #6a7783; }
+.lbl.warn span { color: var(--fail); border-color: color-mix(in srgb, var(--fail) 55%, #33404b); }
+.lbl.ghost span { color: var(--muted); border-style: dashed; }
+.lbl.sim span { color: var(--cyan); border-color: color-mix(in srgb, var(--cyan) 40%, #33404b); }
+.tip { position: absolute; z-index: 3; max-width: 290px; background: rgba(16,21,26,.96); border: 1px solid #3a4652; border-radius: 6px; padding: 9px 11px; pointer-events: none; font-size: 12.5px; box-shadow: 0 8px 24px rgba(0,0,0,.45); }
+.tip b { display: block; font-family: var(--f-display); font-size: 14px; margin-bottom: 2px; }
+.tip code { color: var(--cyan); font-size: 11.5px; }
+
+.side { display: flex; flex-direction: column; height: clamp(380px, 64vh, 720px); border: 1px solid var(--line); border-radius: 8px; background: var(--panel); min-width: 0; overflow: hidden; }
+.tabs { display: flex; border-bottom: 1px solid var(--line); flex: none; }
+.tabs button { flex: 1; background: transparent; border: 0; border-bottom: 2px solid transparent; padding: 9px 10px; color: var(--muted); font-weight: 500; }
+.tabs button[aria-selected="true"] { color: var(--fg); border-bottom-color: var(--accent); }
+.tabpane { display: flex; flex-direction: column; min-height: 0; flex: 1; }
+.tabpane[hidden] { display: none !important; }
+
+.now { padding: 12px 14px 10px; border-bottom: 1px solid var(--line); flex: none; }
+.now-test { font-family: var(--f-mono); font-size: 12px; color: var(--fg); overflow-wrap: anywhere; }
+.now-test .file { color: var(--muted); }
+.steps { list-style: none; margin: 10px 0 8px; padding: 0; display: flex; flex-wrap: wrap; gap: 4px; }
+.steps li { font-family: var(--f-mono); font-size: 11px; padding: 3px 7px; border-radius: 3px; border: 1px solid var(--line); color: var(--muted); }
+.steps li.done { color: var(--fg); border-color: #34424e; background: var(--panel-2); }
+.steps li.on { color: #1a1205; background: var(--accent); border-color: var(--accent); }
+.now-meta { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; font-size: 11.5px; }
+.now-meta span { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.now-meta code { color: var(--cyan); font-size: 11px; text-align: right; overflow-wrap: anywhere; }
+.bar { height: 3px; background: var(--line); border-radius: 2px; margin-top: 8px; overflow: hidden; }
+.bar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .2s linear; }
+
+.trace { padding: 8px 14px 6px; border-bottom: 1px solid var(--line); flex: none; }
+.trace-h { display: flex; justify-content: space-between; gap: 8px; font-size: 11.5px; color: var(--muted); font-family: var(--f-mono); }
+.trace-h b { color: var(--accent); font-weight: 500; }
+#trace { display: block; width: 100%; height: 108px; margin-top: 4px; }
+
+.term { flex: 1; min-height: 0; overflow: auto; margin: 0; padding: 10px 14px; font-size: 11.5px; line-height: 1.5; background: #0a0d10; white-space: pre-wrap; overflow-wrap: anywhere; }
+.term .c { color: var(--cyan); }
+.term .o { color: #aab5bf; }
+.term .n { color: #66737f; font-style: italic; }
+.term .t { color: var(--fg); font-weight: 500; }
+.term .P { color: var(--pass); font-weight: 600; }
+.term .F { color: var(--fail); font-weight: 600; }
+.term .S { color: var(--skip); font-weight: 600; }
+.term .I { color: var(--inc); font-weight: 600; }
+
+.cfg { padding: 14px; overflow: auto; flex: 1; font-family: var(--f-mono); font-size: 12px; }
+.cfg p.hint { font-family: var(--f-body); color: var(--muted); font-size: 12.5px; margin: 0 0 12px; }
+.cfg .grp { margin-bottom: 14px; }
+.cfg .key { color: var(--muted); }
+.cfg .row { display: grid; grid-template-columns: 1fr 120px; align-items: center; gap: 8px; padding: 3px 0 3px 16px; }
+.cfg .row.l2 { padding-left: 32px; }
+.cfg .ro { color: var(--fg); text-align: right; overflow-wrap: anywhere; }
+.cfg input, .cfg select { width: 100%; background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 4px 6px; text-align: right; font-family: var(--f-mono); font-size: 12px; }
+.cfg input:disabled, .cfg select:disabled { opacity: .55; }
+.cfg .comment { color: #5f6c78; font-style: italic; padding-left: 16px; }
+.whatif { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; font-family: var(--f-body); }
+.whatif button { text-align: left; background: var(--panel-2); border: 1px solid var(--line); border-radius: 5px; padding: 7px 10px; font-size: 12.5px; }
+.whatif button b { font-weight: 600; }
+.whatif button small { display: block; color: var(--muted); font-size: 11.5px; }
+.whatif button:disabled { opacity: .45; cursor: not-allowed; }
+
+/* ---------- results ---------- */
+.results { padding-block: 6px 40px; display: flex; flex-direction: column; gap: 14px; }
+.res-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 16px; }
+.res-head h2 { font-family: var(--f-display); font-size: 22px; margin: 0; font-weight: 700; }
+.res-head p { margin: 0; color: var(--muted); font-size: 12.5px; flex: 1 1 260px; min-width: 0; }
+.pytest { font-family: var(--f-mono); font-size: 12px; padding: 4px 9px; border-radius: 4px; border: 1px solid var(--line); background: var(--panel); white-space: nowrap; }
+
+.res-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)) minmax(0, 1.25fr); gap: 12px; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 14px; min-width: 0; }
+.card h3 { margin: 0 0 8px; font-family: var(--f-display); font-weight: 600; font-size: 15px; }
+.vc { display: flex; flex-direction: column; gap: 8px; }
+.vc-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+.vc-mode { font-family: var(--f-display); font-weight: 600; font-size: 15px; }
+.vc-fw { font-family: var(--f-mono); font-size: 11px; color: var(--muted); overflow-wrap: anywhere; }
+.pill { font-family: var(--f-mono); font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 99px; white-space: nowrap; border: 1px solid; }
+.pill.PASS { color: var(--pass); border-color: color-mix(in srgb, var(--pass) 50%, transparent); background: color-mix(in srgb, var(--pass) 12%, transparent); }
+.pill.FAIL { color: var(--fail); border-color: color-mix(in srgb, var(--fail) 50%, transparent); background: color-mix(in srgb, var(--fail) 12%, transparent); }
+.pill.INCONCLUSIVE { color: var(--inc); border-color: color-mix(in srgb, var(--inc) 50%, transparent); background: color-mix(in srgb, var(--inc) 12%, transparent); }
+.pill.SKIP, .pill.WAIT { color: var(--skip); border-color: color-mix(in srgb, var(--skip) 50%, transparent); }
+.pill.RUN { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 50%, transparent); }
+.vc-big { font-family: var(--f-display); font-weight: 700; font-size: 30px; line-height: 1; font-variant-numeric: tabular-nums; }
+.vc-big small { font-size: 15px; font-weight: 600; color: var(--muted); }
+.vc-unc { font-family: var(--f-mono); font-size: 11.5px; color: var(--muted); }
+.vc-strip { width: 100%; height: 46px; display: block; }
+.kv { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px 8px; font-family: var(--f-mono); font-size: 11px; }
+.kv div { display: flex; flex-direction: column; min-width: 0; }
+.kv span { color: var(--muted); font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em; }
+.kv b { font-weight: 500; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.vc-reason { font-size: 12px; color: var(--muted); margin: 0; }
+.vc-empty { font-size: 12.5px; color: var(--muted); margin: 0; }
+.vc-empty code { color: var(--accent); }
+
+#bars { display: block; width: 100%; height: 250px; }
+.note { font-size: 11.5px; color: var(--muted); margin: 6px 0 0; }
+
+.res-grid2 { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 12px; }
+.tgroup { margin-bottom: 10px; }
+.tgroup h4 { margin: 0 0 4px; font-family: var(--f-mono); font-weight: 500; font-size: 12px; color: var(--muted); }
+.trow { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; gap: 8px; align-items: start; padding: 3px 0; font-family: var(--f-mono); font-size: 12px; }
+.trow .dot { width: 9px; height: 9px; border-radius: 50%; margin-top: 4px; background: var(--line); }
+.trow.passed .dot { background: var(--pass); }
+.trow.failed .dot { background: var(--fail); }
+.trow.skipped .dot { background: var(--skip); }
+.trow.interrupted .dot { background: var(--inc); }
+.trow.running .dot { background: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 30%, transparent); }
+.trow .nm { overflow-wrap: anywhere; }
+.trow .msg { grid-column: 2 / 4; color: var(--muted); font-size: 11px; }
+.trow.failed .msg { color: color-mix(in srgb, var(--fail) 70%, var(--muted)); }
+.trow .st { font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.trow.passed .st { color: var(--pass); }
+.trow.failed .st { color: var(--fail); }
+.trow.running .st { color: var(--accent); }
+
+.files { list-style: none; margin: 0 0 14px; padding: 0; font-family: var(--f-mono); font-size: 12px; max-height: 210px; overflow: auto; }
+.files li { padding: 2px 0; display: flex; justify-content: space-between; gap: 8px; }
+.files li span { color: var(--muted); font-size: 11px; white-space: nowrap; }
+.files li.new { color: var(--accent); }
+.files .empty { color: var(--muted); font-family: var(--f-body); }
+.manifest { margin: 0; max-height: 300px; overflow: auto; font-size: 11px; background: #0a0d10; border: 1px solid var(--line); border-radius: 5px; padding: 10px; color: #aab5bf; white-space: pre; }
+
+@media (max-width: 1180px) {
+  .res-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .res-grid .chart { grid-column: 1 / -1; }
+}
+@media (max-width: 980px) {
+  .bench { grid-template-columns: minmax(0, 1fr); }
+  .side { height: 560px; }
+  .res-grid2 { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 720px) {
+  .res-grid { grid-template-columns: minmax(0, 1fr); }
+  .stage { height: 420px; }
+  .hud-tl { right: 12px; top: 46px; }
+}
+@media (prefers-reduced-motion: reduce) { .bar i { transition: none; } }
+</style>
+
+<header class="top wrap">
+  <div class="brand">
+    <div class="mark" aria-hidden="true"></div>
+    <div>
+      <h1>SiWx917 DV Bench</h1>
+      <p>dvharness · DK2605A / BRD2605A · J-Link 446000788</p>
+    </div>
+  </div>
+  <div class="seg" id="modeSeg" role="group" aria-label="Bench mode">
+    <button type="button" id="modePractice" data-mode="practice" aria-pressed="true">Practice<small>fake_commander.py</small></button>
+    <button type="button" id="modeReal" data-mode="real" aria-pressed="false">Real bench<small>DK2605A · no AEM</small></button>
+  </div>
+  <div class="runctl">
+    <label class="speed" for="speed">Speed
+      <select id="speed">
+        <option value="1">1× real time</option>
+        <option value="4" selected>4×</option>
+        <option value="10">10×</option>
+        <option value="30">30×</option>
+      </select>
+    </label>
+    <button type="button" class="btn go" id="startBtn"><i class="ico"></i>Start run</button>
+    <button type="button" class="btn stop" id="stopBtn" disabled><i class="ico"></i>Stop</button>
+  </div>
+</header>
+
+<main class="bench wrap">
+  <section class="stage" id="stage" aria-label="3-D bench">
+    <canvas id="gl"></canvas>
+    <div id="labels"></div>
+    <div class="hud hud-tl">
+      <div class="hud-step" id="hudStep">Idle — press Start run</div>
+      <div class="hud-sub" id="hudSub">Drag to orbit · scroll to zoom · hover a part to see what it does in the harness</div>
+    </div>
+    <div class="hud hud-tr">
+      <button type="button" id="lblBtn" aria-pressed="true">Labels</button>
+      <button type="button" id="viewChip">Board</button>
+      <button type="button" id="viewAll">Bench</button>
+    </div>
+    <div class="hud hud-bl">
+      <span class="truth sim" id="truth">Simulated · numbers come from tools/fake_commander.py, not from a chip</span>
+      <span class="legend"><span><i style="background:var(--cyan)"></i>command → board</span><span><i style="background:var(--accent)"></i>samples → host</span></span>
+    </div>
+    <div class="tip" id="tip" hidden></div>
+  </section>
+
+  <aside class="side" aria-label="Run console">
+    <div class="tabs" role="tablist">
+      <button type="button" role="tab" id="tabRunBtn" aria-selected="true" data-tab="run">Run</button>
+      <button type="button" role="tab" id="tabCfgBtn" aria-selected="false" data-tab="cfg">config.yaml</button>
+    </div>
+    <div class="tabpane" id="tab-run">
+      <div class="now">
+        <div class="now-test" id="nowTest"><span class="file">tests/</span>— waiting to start</div>
+        <ol class="steps" id="steps"></ol>
+        <div class="now-meta"><span id="runCount">—</span><code id="codeRef"></code></div>
+        <div class="bar"><i id="prog"></i></div>
+      </div>
+      <div class="trace">
+        <div class="trace-h"><span>aem dump · <b id="traceMode">no samples yet</b></span><span id="traceStat"></span></div>
+        <canvas id="trace"></canvas>
+      </div>
+      <pre class="term" id="term" aria-live="off"></pre>
+    </div>
+    <div class="tabpane" id="tab-cfg" hidden>
+      <div class="cfg" id="cfg"></div>
+    </div>
+  </aside>
+</main>
+
+<section class="results wrap">
+  <div class="res-head">
+    <h2>Results</h2>
+    <p id="resSource"></p>
+    <span class="pytest" id="pytestLine"></span>
+  </div>
+  <div class="res-grid">
+    <div class="card vc" id="vc-ps4_active"></div>
+    <div class="card vc" id="vc-ps1_sleep"></div>
+    <div class="card vc" id="vc-ble_adv"></div>
+    <div class="card chart">
+      <h3>power_by_mode.png</h3>
+      <canvas id="bars"></canvas>
+      <p class="note">Log scale. Error bars are the uncertainty the verdict used: the larger of the standard error and the AEM's own resolution. Dashed ticks are the limits from config.yaml.</p>
+    </div>
+  </div>
+  <div class="res-grid2">
+    <div class="card">
+      <h3>Tests, in pytest order</h3>
+      <div id="tests"></div>
+    </div>
+    <div class="card">
+      <h3 id="folderTitle">results/</h3>
+      <ul class="files" id="files"></ul>
+      <h3>manifest.json</h3>
+      <pre class="manifest" id="manifest"></pre>
+    </div>
+  </div>
+</section>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+
+/* =====================================================================
+   1.  Facts copied from the repo (config.yaml, fake_commander.py, README)
+   ===================================================================== */
+const SERIAL = '446000788';
+const PEER_SERIAL = '440654321';
+const REAL_COMMANDER = 'C:/SiliconLabs/SimplicityCommander/Simplicity Commander CLI/commander-cli.exe';
+const FAKE_COMMANDER = 'python3 tools/fake_commander.py';
+const MODES = ['ps4_active', 'ps1_sleep', 'ble_adv'];
+const MODE_INFO = {
+  ps4_active: { title: 'PS4 active', what: 'CPU running', fw: 'firmware/ps4_active.rps' },
+  ps1_sleep:  { title: 'PS1 ULP sleep', what: 'CPU off, RAM retained', fw: 'firmware/ps1_sleep.rps' },
+  ble_adv:    { title: 'BLE advertising', what: 'BLE 5.4 adverts at 1 s', fw: 'firmware/ble_adv_1000ms.rps' },
+};
+// fake_commander.py PROFILES — (mean mA, std mA) per sample. ILLUSTRATIVE ONLY.
+const PROFILES = { ps1: [0.0018, 0.0002], adv: [0.045, 0.004], ps4: [2.6, 0.02] };
+const profileFor = fw => { for (const k of Object.keys(PROFILES)) if (fw.toLowerCase().includes(k)) return PROFILES[k]; return PROFILES.ps4; };
+
+const DEFAULT_CFG = {
+  power: {
+    settle_s: 2, duration_s: 2, datarate_hz: 1000, repeats: 5,
+    limits_mA: { ps4_active: 5.0, ps1_sleep: 0.010, ble_adv: 0.100 },
+    instrument_floor_mA: { ps4_active: 0.100, ps1_sleep: 0.001, ble_adv: 0.001 },
+  },
+};
+const STUB_SHA = '4097889236a2af26c293033feb964c4cf118c0224e0d063fec0a89e9d0569ef2'; // sha256(b"placeholder")
+const HEAD = 'b0f388c368e7994a08b5f989e12abc881cb9677c';
+
+const REAL_PROBE = `Kit Information:
+=======================================
+Kit Name        : SiWx917 Wi-Fi 6 and Bluetooth LE Dev Kit
+Kit Part Number : DK2605A Rev. A00
+J-Link Serial   : 446000788
+Debug Mode      : MCU
+Debug Part      : SiWG917M111MGTBA
+AEM Supported   : False
+VCOM Supported  : True
+IP Supported    : False
+VCOM Port       : COM3
+IP Address      : Unknown
+
+Firmware Information:
+=======================================
+FW Version      : 2v0p2b426
+Available FW Ver: 2v1p1
+Upgrade by running "adapter fwupgrade --serialno 446000788"
+
+Board List:
+=======================================
+Name            : SiWG917 Dev Kit Board
+Part Number     : BRD2605A Rev. A02
+Serial Number   : 242501125
+Target Device   : SiWG917M111MGTBA
+
+DONE`;
+const FAKE_PROBE = `Kit Information:
+=======================================
+Kit Name        : SiWx917 Wi-Fi 6 and Bluetooth LE Pro Kit (FAKE)
+Kit Part Number : SiWx917-PK6031A
+Radio Board     : BRD4338A
+J-Link Serial   : ${SERIAL}
+Debug Mode      : MCU
+AEM Supported   : 1
+VCOM Supported  : 1
+DONE`;
+
+// Outcomes of the physical run, from results/last_run.xml (2026-08-21 13:07:23).
+const REAL_XML = {
+  ts: '2026-08-21_13-07-23', duration: '2.82s',
+  status: {
+    test_kit_has_current_meter: ['failed', "AssertionError: This kit has no AEM — see README 'no AEM' section"],
+    test_flash_and_reset: ['failed', "FileNotFoundError: Firmware image for mode 'ps4_active' is missing: firmware\\ps4_active.rps"],
+    'test_current_in_mode[ps4_active]': ['skipped', 'no AEM on this kit'],
+    'test_current_in_mode[ps1_sleep]': ['skipped', 'no AEM on this kit'],
+    'test_current_in_mode[ble_adv]': ['skipped', 'no AEM on this kit'],
+    test_99_make_plot: ['failed', "FileNotFoundError: [Errno 2] No such file or directory: '…\\results\\2026-08-21_13-07-23\\power_summary.json'"],
+  },
+};
+// docs/sample-run/power_summary.json — one practice run, kept as the at-rest example.
+const SAMPLE = {
+  ps4_active: { n: 5, mean: 2.5998704679999998, std: 0.0006004487765269189, sem: 0.0002685288562641541, min: 2.5991934, max: 2.60077132 },
+  ps1_sleep: { n: 5, mean: 0.001798937, std: 5.187625420170567e-06, sem: 2.319976616261459e-06, min: 0.00179344, max: 0.001806635 },
+  ble_adv: { n: 5, mean: 0.045039582, std: 0.00013199753883122193, sem: 5.9031093937856074e-05, min: 0.044810555, max: 0.04514246 },
+};
+
+/* =====================================================================
+   2.  stats.py, line for line
+   ===================================================================== */
+function summarize(values) {
+  if (!values.length) throw new Error('no values to summarize');
+  const n = values.length;
+  const mean = values.reduce((a, b) => a + b, 0) / n;
+  const std = n > 1 ? Math.sqrt(values.reduce((a, b) => a + (b - mean) ** 2, 0) / (n - 1)) : 0;
+  let mn = Infinity, mx = -Infinity;
+  for (const v of values) { if (v < mn) mn = v; if (v > mx) mx = v; }
+  return { n, mean, std, sem: n > 1 ? std / Math.sqrt(n) : 0, min: mn, max: mx };
+}
+const g = (x, p = 6) => { if (x === 0) return '0'; const s = Number(x.toPrecision(p)); return Math.abs(s) < 1e-4 ? s.toExponential().replace(/\.?0+e/, 'e') : String(s); };
+function judge(s, limit, floor) {
+  const u = Math.max(s.sem, floor);
+  const source = floor >= s.sem ? 'instrument floor' : 'standard error of the mean';
+  const lo = s.mean - u, hi = s.mean + u;
+  let verdict, reason;
+  if (hi < limit) { verdict = 'PASS'; reason = `mean ${g(s.mean)} mA + ${g(u, 3)} mA (${source}) is still below the ${g(limit)} mA limit`; }
+  else if (lo > limit) { verdict = 'FAIL'; reason = `mean ${g(s.mean)} mA - ${g(u, 3)} mA (${source}) is still above the ${g(limit)} mA limit`; }
+  else { verdict = 'INCONCLUSIVE'; reason = `the ${g(limit)} mA limit falls inside ${g(s.mean)} ± ${g(u, 3)} mA (${source}), so this run cannot tell pass from fail`; }
+  return { verdict, mean: s.mean, limit, uncertainty: u, uncertainty_source: source, instrument_floor: floor, reason };
+}
+function gauss(mean, std) { let u = 0, v = 0; while (u === 0) u = Math.random(); while (v === 0) v = Math.random(); return mean + std * Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); }
+const fmtI = mA => mA >= 1 ? `${mA.toFixed(3)} mA` : `${(mA * 1000).toFixed(mA < 0.01 ? 2 : 1)} µA`;
+const fmtU = mA => mA >= 0.1 ? `${mA.toFixed(3)} mA` : `${(mA * 1000).toPrecision(2)} µA`;
+
+/* =====================================================================
+   3.  App state
+   ===================================================================== */
+const $ = id => document.getElementById(id);
+const S = {
+  mode: 'practice', running: false, stop: false, speed: 4,
+  cfg: structuredClone(DEFAULT_CFG),
+  summary: {}, runMeans: {}, tests: [], files: [], manifest: null, ts: '', source: '',
+  modeLive: {}, // per-mode card status while running
+};
+class Stopped extends Error {}
+
+/* sleep in SIMULATED seconds; honours speed changes mid-wait and the Stop button */
+function simSleep(sec, onTick) {
+  return new Promise((res, rej) => {
+    let p = 0, last = performance.now();
+    if (sec <= 0) { onTick && onTick(1); return res(); }
+    const iv = setInterval(() => {
+      if (S.stop) { clearInterval(iv); rej(new Stopped()); return; }
+      const now = performance.now();
+      p = Math.min(1, p + (now - last) * S.speed / (sec * 1000));
+      last = now;
+      onTick && onTick(p);
+      if (p >= 1) { clearInterval(iv); res(); }
+    }, 30);
+  });
+}
+
+/* ---------------- terminal ---------------- */
+const term = $('term');
+function log(text, cls = 'o') {
+  const span = document.createElement('span');
+  span.className = cls;
+  span.textContent = text + '\n';
+  term.appendChild(span);
+  while (term.childNodes.length > 600) term.removeChild(term.firstChild);
+  term.scrollTop = term.scrollHeight;
+  screenLines.push([text, cls]);
+  if (screenLines.length > 40) screenLines.splice(0, screenLines.length - 40);
+  screenDirty = true;
+}
+const screenLines = [];
+let screenDirty = true;
+
+/* ---------------- step chips ---------------- */
+const STEP = {
+  probe:   { label: 'adapter probe', ref: 'dvharness/device.py:86  Device.probe()' },
+  aem:     { label: 'has_aem?', ref: 'dvharness/device.py:101  Device.has_aem()' },
+  version: { label: '--version', ref: 'dvharness/device.py:109  commander_version()' },
+  image:   { label: 'resolve .rps', ref: 'dvharness/firmware.py:45  resolve_firmware()' },
+  flash:   { label: 'rps load', ref: 'dvharness/device.py:122  Device.flash()' },
+  reset:   { label: 'device reset', ref: 'dvharness/device.py:135  Device.reset()' },
+  settle:  { label: 'settle', ref: 'tests/test_02_power.py:47  time.sleep(settle_s)' },
+  dump:    { label: 'aem dump', ref: 'dvharness/device.py:163  Device.dump_current()' },
+  summ:    { label: 'summarize', ref: 'dvharness/stats.py:56  summarize()' },
+  judge:   { label: 'judge', ref: 'dvharness/stats.py:86  judge()' },
+  save:    { label: 'save csv/json', ref: 'tests/test_02_power.py:57  power_<mode>.csv' },
+  plot:    { label: 'bar chart', ref: 'tests/test_02_power.py:92  test_99_make_plot()' },
+  logic:   { label: 'pure logic', ref: '' },
+  manifest:{ label: 'write manifest', ref: 'tests/conftest.py  session_manifest()' },
+};
+let curSteps = [];
+function setSteps(keys) {
+  curSteps = keys;
+  $('steps').innerHTML = keys.map(k => `<li data-k="${k}">${STEP[k].label}</li>`).join('');
+}
+function stepOn(key, refOverride) {
+  const lis = [...$('steps').children];
+  const idx = curSteps.indexOf(key);
+  lis.forEach((li, i) => { li.className = i < idx ? 'done' : i === idx ? 'on' : ''; });
+  $('codeRef').textContent = refOverride ?? STEP[key].ref;
+}
+function stepsAllDone() { [...$('steps').children].forEach(li => li.className = 'done'); }
+function hud(main, sub) { $('hudStep').textContent = main; if (sub !== undefined) $('hudSub').textContent = sub; }
+
+/* ---------------- device.py, simulated ---------------- */
+function cmdPrefix() { return S.mode === 'practice' ? FAKE_COMMANDER : `"${REAL_COMMANDER}"`; }
+async function commander(args, outText, secs, { withSerial = true, upPackets = 2 } = {}) {
+  log(`$ ${cmdPrefix()} ${args.join(' ')}${withSerial ? ' --serialno ' + SERIAL : ''}`, 'c');
+  bench.packets('down', 3);
+  await simSleep(secs, p => bench.busy(p));
+  if (outText) outText.split('\n').forEach(l => log(l, 'o'));
+  bench.packets('up', upPackets);
+  return outText;
+}
+const Device = {
+  async version() {
+    const out = S.mode === 'practice' ? 'Simplicity Commander 1.17.0 (FAKE)\nJLink DLL version 7.94e (FAKE)' : 'Simplicity Commander 1v25p0b1995';
+    await commander(['--version'], out, 0.4, { withSerial: false });
+    return out.split('\n')[0];
+  },
+  async probe() {
+    const out = await commander(['adapter', 'probe'], S.mode === 'practice' ? FAKE_PROBE : REAL_PROBE, 0.6);
+    const info = {};
+    for (const line of out.split('\n')) {
+      const m = line.match(/^\s*([A-Za-z][A-Za-z0-9 .\-/]*?)\s*:\s*(.+?)\s*$/);
+      if (m) info[m[1]] = m[2];
+    }
+    return info;
+  },
+  async hasAem() { const yes = ((await this.probe())['AEM Supported'] || '').trim().toLowerCase(); return yes === '1' || yes === 'true'; },
+  async flash(fw) {
+    log(`$ ${cmdPrefix()} rps load ${fw} --serialno ${SERIAL}`, 'c');
+    bench.packets('down', 8);
+    bench.state.led = 'flash';
+    log(`Parsing RPS file ${fw}...`, 'o'); log('RPS header OK, image type M4, 65536 bytes', 'o'); log('Erasing flash...', 'o');
+    await simSleep(1.4, p => { bench.state.flash = p; if (p > .35 && Math.random() < .2) bench.packets('down', 1); });
+    log('Writing image to flash...', 'o'); log('DONE', 'o');
+    bench.state.flash = null; bench.state.led = 'off';
+    bench.packets('up', 1);
+    S.firmwareNow = fw;
+  },
+  async reset() {
+    bench.state.resetFlash = 1; bench.state.glowTarget = 0;
+    await commander(['device', 'reset'], 'Resetting...\nDONE', 0.35);
+  },
+  async dumpCurrent(dur, rate, outfile, mode) {
+    log(`$ ${cmdPrefix()} aem dump --outfile ${outfile} --duration ${dur} --datarate ${rate} --serialno ${SERIAL}`, 'c');
+    bench.packets('down', 3);
+    const [mean, std] = profileFor(S.firmwareNow || 'ps4');
+    const n = Math.round(dur * rate);
+    const samples = new Float64Array(n);
+    for (let k = 0; k < n; k++) samples[k] = Math.max(0, gauss(mean, std));
+    trace.start(mode, samples, mean, std);
+    bench.state.sampling = true;
+    let shown = 0;
+    await simSleep(dur, p => {
+      const upto = Math.floor(p * n);
+      if (upto > shown) { trace.reveal(upto); shown = upto; }
+      if (Math.random() < 0.35) bench.packets('up', 1);
+    }).finally(() => { bench.state.sampling = false; });
+    log('Logging...', 'o'); log(`Closed file '${outfile}',`, 'o'); log(`${n} measurements written to file.`, 'o'); log('DONE', 'o');
+    return Array.from(samples);
+  },
+};
+
+/* =====================================================================
+   4.  The test session — same tests, same order as `python3 -m pytest`
+   ===================================================================== */
+const pure = (file, name, note, ref) => ({ file, name, note, ref, run: async () => { setSteps(['logic']); stepOn('logic', ref); hud(`Pure logic · ${file}`, note); await simSleep(0.08); return ['passed', note]; } });
+
+function buildTests() {
+  const T = [];
+  const F1 = 'test_01_smoke.py', F2 = 'test_02_power.py', F3 = 'test_03_manifest.py', F4 = 'test_04_verdict.py';
+  T.push({ file: F1, name: 'test_kit_answers', run: async () => {
+    setSteps(['probe']); stepOn('probe');
+    hud('Is anyone home?', 'Commander asks the kit for its J-Link serial');
+    const info = await Device.probe();
+    return info['J-Link Serial'] === SERIAL ? ['passed', `J-Link Serial ${SERIAL} answered`] : ['failed', 'serial mismatch'];
+  } });
+  T.push({ file: F1, name: 'test_kit_has_current_meter', run: async () => {
+    setSteps(['probe', 'aem']); stepOn('probe');
+    hud('Does this kit have a current meter?', 'Reads the “AEM Supported” line of adapter probe');
+    const ok = await Device.hasAem(); stepOn('aem');
+    await simSleep(0.2);
+    if (ok) return ['passed', 'AEM Supported : 1 → meter present'];
+    bench.state.noAemAlert = 1;
+    return ['failed', REAL_XML.status.test_kit_has_current_meter[1]];
+  } });
+  T.push(pure(F1, 'test_aem_detection_reads_both_commander_spellings', "'1' and 'True' mean yes; '0', 'False', '' and anything unknown mean no meter", 'tests/test_01_smoke.py:27'));
+  T.push({ file: F1, name: 'test_flash_and_reset', run: async () => {
+    setSteps(['image', 'flash', 'reset']); stepOn('image');
+    hud('Can we flash and reset the chip?', 'firmware.py looks for firmware/ps4_active.rps first');
+    await simSleep(0.3);
+    if (S.mode === 'real') {
+      log("# firmware.py: commander is real hardware and firmware/ps4_active.rps was never built → refuse, do not invent one", 'n');
+      return ['failed', REAL_XML.status.test_flash_and_reset[1]];
+    }
+    stubImage('ps4_active');
+    stepOn('flash'); await Device.flash(MODE_INFO.ps4_active.fw);
+    stepOn('reset'); await Device.reset();
+    return ['passed', 'rps load → device reset, both printed DONE'];
+  } });
+  T.push(pure(F1, 'test_refuses_to_fabricate_firmware_for_real_hardware', 'a missing .rps on a real kit raises FileNotFoundError naming the path', 'tests/test_01_smoke.py:50'));
+  T.push(pure(F1, 'test_practice_mode_detection_fails_closed', 'only "…fake_commander…" counts as practice; anything else is real', 'tests/test_01_smoke.py:66'));
+  for (const mode of MODES) T.push({ file: F2, name: `test_current_in_mode[${mode}]`, mode, run: () => powerTest(mode) });
+  T.push({ file: F2, name: 'test_99_make_plot', run: async () => {
+    setSteps(['plot']); stepOn('plot');
+    hud('Plotting power_by_mode.png', 'Reads power_summary.json written by the three power tests');
+    await simSleep(0.5);
+    if (!Object.keys(S.summary).length) return ['failed', `FileNotFoundError: No such file or directory: 'results/${S.ts}/power_summary.json'`];
+    addFile('power_by_mode.png', 'bar chart'); drawBars();
+    return ['passed', 'power_by_mode.png written'];
+  } });
+  [
+    ['test_manifest_written_at_session_start', 'manifest.json exists before any test ran', 21],
+    ['test_manifest_records_the_config_actually_used', 'config_snapshot equals config.yaml as read', 33],
+    ['test_manifest_names_this_commit', `git.commit = ${HEAD.slice(0, 7)}…`, 40],
+    ['test_sha256_matches_the_file_on_disk', 'hash of a temp file matches hashlib', 49],
+    ['test_sha256_reports_a_missing_file_instead_of_inventing_one', '{"exists": false} rather than a made-up hash', 58],
+    ['test_porcelain_parsing_keeps_the_whole_path', '" M dvharness/device.py" keeps its leading space', 64],
+    ['test_open_manifest_is_marked_in_progress', 'ended_utc is null on the opening write', 75],
+  ].forEach(([n, note, l]) => T.push(pure(F3, n, note, `tests/test_03_manifest.py:${l}`)));
+  [
+    ['test_sem_is_std_over_sqrt_n', 'sem = std / √n', 33],
+    ['test_single_value_has_no_spread', 'n=1 → std = sem = 0', 40],
+    ['test_summarize_still_rejects_nothing_to_summarize', 'summarize([]) raises ValueError', 45],
+    ['test_comfortably_below_the_limit_passes', 'mean + u < limit → PASS', 53],
+    ['test_comfortably_above_the_limit_fails', 'mean − u > limit → FAIL', 58],
+    ['test_sitting_on_the_limit_is_inconclusive_not_a_pass', 'limit inside mean ± u → INCONCLUSIVE', 63],
+    ['test_a_tiny_spread_cannot_buy_a_pass_the_meter_never_earned', 'u is floored at the AEM resolution', 71],
+    ['test_uncertainty_is_the_larger_of_sem_and_floor', 'u = max(sem, floor)', 90],
+    ['test_verdict_explains_itself', 'reason names mean, u, source and limit', 100],
+    ['test_refuses_to_judge_without_an_instrument_floor', 'floor=None raises ValueError', 113],
+    ['test_rejects_a_negative_floor', 'floor < 0 raises ValueError', 118],
+    ['test_every_limited_mode_has_an_instrument_floor', 'each limits_mA key has an instrument_floor_mA', 126],
+  ].forEach(([n, note, l]) => T.push(pure(F4, n, note, `tests/test_04_verdict.py:${l}`)));
+  return T.map(t => ({ ...t, status: 'pending', msg: '' }));
+}
+
+function stubImage(mode) {
+  if (S.stubbed?.[mode]) return;
+  S.stubbed = { ...(S.stubbed || {}), [mode]: true };
+  S.flashed[mode] = MODE_INFO[mode].fw;
+  log(`# firmware.py: practice mode → ${MODE_INFO[mode].fw} missing, wrote stub b"placeholder" (never reaches real silicon)`, 'n');
+}
+
+async function powerTest(mode) {
+  const pw = S.cfg.power, info = MODE_INFO[mode];
+  setSteps(['aem', 'image', 'flash', 'reset', 'settle', 'dump', 'summ', 'judge', 'save']);
+  S.modeLive[mode] = 'RUN'; renderVerdicts();
+  stepOn('aem');
+  hud(`${info.title}: checking for a meter`, 'The test skips itself when the kit has no AEM');
+  const ok = await Device.hasAem();
+  if (!ok) { S.modeLive[mode] = 'SKIP'; renderVerdicts(); return ['skipped', 'no AEM on this kit']; }
+  stepOn('image'); await simSleep(0.15);
+  stubImage(mode);
+  const fw = info.fw;
+  const runMeans = []; S.runMeans[mode] = runMeans;
+  const rows = [];
+  for (let run = 0; run < pw.repeats; run++) {
+    const tag = `${info.title} · run ${run + 1}/${pw.repeats}`;
+    $('runCount').textContent = `mode ${MODES.indexOf(mode) + 1}/3 · run ${run + 1}/${pw.repeats}`;
+    bench.state.mode = null;
+    stepOn('flash'); hud(`${tag}: flashing ${fw.split('/')[1]}`, 'Every run starts from a fresh flash, so the runs are independent');
+    await Device.flash(fw);
+    stepOn('reset'); hud(`${tag}: reset`, 'Hardware reset through the J-Link debugger');
+    await Device.reset();
+    bench.state.mode = mode;
+    stepOn('settle', `tests/test_02_power.py:47  time.sleep(${pw.settle_s})`);
+    hud(`${tag}: settling ${pw.settle_s} s`, 'Caps charge and the radio calibrates before anything is recorded');
+    log(`# time.sleep(${pw.settle_s})  settle`, 'n');
+    bench.state.glowTarget = 0.6;
+    await simSleep(pw.settle_s);
+    stepOn('dump'); hud(`${tag}: recording ${pw.duration_s} s at ${pw.datarate_hz} samples/s`, `${Math.round(pw.duration_s * pw.datarate_hz)} current samples stream back to the host`);
+    const csv = `results/${S.ts}/raw_${mode}_run${run}.csv`;
+    const samples = await Device.dumpCurrent(pw.duration_s, pw.datarate_hz, csv, mode);
+    addFile(`raw_${mode}_run${run}.csv`, `${samples.length} rows`);
+    stepOn('summ');
+    const s = summarize(samples);
+    runMeans.push(s.mean);
+    rows.push(s);
+    log(`# run ${run}: mean ${fmtI(s.mean)}  std ${fmtU(s.std)}  over ${s.n} samples`, 'n');
+    renderVerdicts();
+    await simSleep(0.15);
+  }
+  bench.state.mode = null; bench.state.glowTarget = 0;
+  const overall = summarize(runMeans);
+  stepOn('judge'); hud(`${info.title}: judging`, 'Uncertainty = the larger of the standard error and what the meter can resolve');
+  await simSleep(0.4);
+  const v = judge(overall, pw.limits_mA[mode], pw.instrument_floor_mA[mode]);
+  S.summary[mode] = { ...overall, runs: runMeans.slice(), verdict: v };
+  stepOn('save');
+  addFile(`power_${mode}.csv`, `${rows.length} runs`);
+  addFile('power_summary.json', `${Object.keys(S.summary).length} modes`, true);
+  S.modeLive[mode] = null;
+  renderVerdicts(); drawBars();
+  log(`[${mode}] n=${overall.n}  mean=${overall.mean.toFixed(4)} mA  std=${overall.std.toFixed(4)} mA  sem=${overall.sem.toFixed(4)} mA`, 'o');
+  log(`[${mode}] ${v.verdict}: ${v.reason}`, v.verdict === 'PASS' ? 'P' : v.verdict === 'FAIL' ? 'F' : 'I');
+  await simSleep(0.2);
+  if (v.verdict === 'INCONCLUSIVE') return ['failed', `${mode}: INCONCLUSIVE — ${v.reason}`];
+  if (v.verdict !== 'PASS') return ['failed', `${mode}: ${v.reason}`];
+  return ['passed', `${fmtI(overall.mean)} ± ${fmtU(v.uncertainty)} → PASS`];
+}
+
+/* ---------------- session (conftest.py fixtures) ---------------- */
+function stamp(d = new Date()) { const p = n => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}_${p(d.getHours())}-${p(d.getMinutes())}-${p(d.getSeconds())}`; }
+function utcNow() { return new Date().toISOString().replace(/\.\d+Z$/, '+00:00'); }
+
+async function runSession() {
+  if (S.running) return;
+  readCfgForm();
+  S.running = true; S.stop = false;
+  S.summary = {}; S.runMeans = {}; S.files = []; S.flashed = {}; S.stubbed = {}; S.modeLive = {};
+  MODES.forEach(m => S.modeLive[m] = S.mode === 'practice' ? 'WAIT' : 'WAIT');
+  S.ts = stamp(); S.source = 'live'; S.manifest = null;
+  S.tests = buildTests();
+  setRunning(true);
+  term.textContent = ''; screenLines.length = 0;
+  trace.clear();
+  renderAll();
+  const t0 = performance.now();
+  log(`$ python3 -m pytest    # ${S.mode === 'practice' ? 'practice mode: config.yaml commander = fake_commander.py' : 'real bench: DK2605A on USB'}`, 't');
+  log(`# conftest.py: results_dir → results/${S.ts}/`, 'n');
+  let version = null;
+  try {
+    setSteps(['version', 'manifest']); stepOn('version');
+    $('nowTest').innerHTML = '<span class="file">tests/conftest.py::</span>session_manifest';
+    hud('Opening the paper trail', 'manifest.json is written before any test runs, so a crashed run still leaves a record');
+    version = await Device.version();
+    stepOn('manifest');
+    S.manifest = buildManifest(version, null);
+    addFile('manifest.json', 'opening write');
+    await simSleep(0.2);
+
+    for (let i = 0; i < S.tests.length; i++) {
+      const t = S.tests[i];
+      t.status = 'running'; renderTests();
+      $('nowTest').innerHTML = `<span class="file">tests/${t.file}::</span>${t.name}`;
+      if (!t.mode) $('runCount').textContent = `test ${i + 1}/${S.tests.length}`;
+      log(`tests/${t.file}::${t.name}`, 't');
+      const t1 = performance.now();
+      let res;
+      try { res = await t.run(); }
+      catch (e) { if (e instanceof Stopped) throw e; res = ['failed', String(e)]; }
+      t.status = res[0]; t.msg = res[1]; t.time = (performance.now() - t1) / 1000;
+      stepsAllDone();
+      log(`  ${t.status.toUpperCase()}${t.status === 'skipped' ? ' (' + t.msg + ')' : ''}`, t.status === 'passed' ? 'P' : t.status === 'failed' ? 'F' : 'S');
+      $('prog').style.width = `${((i + 1) / S.tests.length) * 100}%`;
+      renderTests();
+    }
+    S.manifest = buildManifest(version, utcNow());
+    addFile('manifest.json', 'closing write', true);
+    addFile('../last_run.xml', 'JUnit XML');
+    const secs = ((performance.now() - t0) / 1000 * S.speed).toFixed(2);
+    S.pytestTail = `in ${secs}s (simulated)`;
+    log(`= ${pytestCounts()} ${S.pytestTail} =`, S.tests.some(t => t.status === 'failed') ? 'F' : 'P');
+    hud(S.mode === 'practice' ? 'Run complete' : 'Run complete — device control proven, no power numbers', S.mode === 'practice' ? 'Every number above came from fake_commander.py' : 'AEM Supported: False, so the power tests skipped themselves');
+  } catch (e) {
+    if (!(e instanceof Stopped)) { console.error(e); log(String(e), 'F'); }
+    const cur = S.tests.find(t => t.status === 'running');
+    if (cur) { cur.status = 'interrupted'; cur.msg = 'KeyboardInterrupt — run stopped'; }
+    S.tests.forEach(t => { if (t.status === 'pending') t.msg = 'not run'; });
+    log('!!!!!!!!!!!!!!!!!!!! KeyboardInterrupt !!!!!!!!!!!!!!!!!!!!', 'I');
+    log('# manifest.json keeps its opening write: ended_utc stays null, so the folder says it never finished', 'n');
+    MODES.forEach(m => { if (S.modeLive[m] === 'RUN' || S.modeLive[m] === 'WAIT') S.modeLive[m] = null; });
+    S.pytestTail = 'interrupted';
+    hud('Stopped', 'The results folder keeps what was written so far; manifest.json shows ended_utc: null');
+    bench.state.flash = null; bench.state.sampling = false; bench.state.mode = null; bench.state.glowTarget = 0; bench.state.led = 'off';
+  } finally {
+    S.running = false; S.stop = false;
+    setRunning(false);
+    renderAll();
+  }
+}
+
+function buildManifest(version, ended) {
+  const fwf = {};
+  for (const [mode, path] of Object.entries(S.flashed || {})) fwf[mode] = { path, exists: true, bytes: 11, sha256: STUB_SHA };
+  return {
+    schema_version: 1,
+    session: { started_utc: S.manifest?.session?.started_utc ?? utcNow(), ended_utc: ended },
+    host: { hostname: 'browser-simulation', platform: navigator.platform || 'web', python: '3.12.10 (simulated)' },
+    git: { available: true, commit: HEAD, branch: 'main', dirty: true, dirty_files: ['.codex/'] },
+    commander: { configured: S.mode === 'practice' ? FAKE_COMMANDER : REAL_COMMANDER, version },
+    config_snapshot: {
+      commander: S.mode === 'practice' ? FAKE_COMMANDER : REAL_COMMANDER,
+      boards: { dut: { serial: SERIAL }, peer: { serial: PEER_SERIAL } },
+      firmware: Object.fromEntries(MODES.map(m => [m, MODE_INFO[m].fw])),
+      power: structuredClone(S.cfg.power),
+    },
+    firmware_flashed: fwf,
+  };
+}
+
+function addFile(name, note, replace = false) {
+  const i = S.files.findIndex(f => f.name === name);
+  if (i >= 0) { S.files[i].note = note; S.files[i].fresh = true; }
+  else S.files.push({ name, note, fresh: true });
+  renderFiles();
+}
+
+/* =====================================================================
+   5.  Rendering of the panels
+   ===================================================================== */
+function pytestCounts() {
+  const c = { failed: 0, passed: 0, skipped: 0, interrupted: 0, pending: 0 };
+  S.tests.forEach(t => c[t.status] = (c[t.status] || 0) + 1);
+  return ['failed', 'passed', 'skipped', 'interrupted'].filter(k => c[k]).map(k => `${c[k]} ${k}`).join(', ') + (c.pending ? `, ${c.pending} ${S.running ? 'queued' : 'not run'}` : '');
+}
+function renderTests() {
+  const groups = {};
+  S.tests.forEach(t => (groups[t.file] ||= []).push(t));
+  $('tests').innerHTML = Object.entries(groups).map(([f, ts]) => `
+    <div class="tgroup"><h4>tests/${f}</h4>${ts.map(t => `
+      <div class="trow ${t.status}"><i class="dot"></i><span class="nm">${t.name}</span><span class="st">${t.status === 'pending' ? (S.running ? 'queued' : t.msg ? 'not run' : '—') : t.status}</span>
+      ${t.msg && t.status !== 'pending' ? `<span class="msg">${escapeHtml(t.msg)}</span>` : ''}</div>`).join('')}</div>`).join('');
+  $('pytestLine').textContent = S.tests.some(t => t.status !== 'pending') ? `${pytestCounts()} ${S.pytestTail || ''}`.trim() : `${S.tests.length} tests collected`;
+}
+function escapeHtml(s) { return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+
+function renderFiles() {
+  $('folderTitle').textContent = `results/${S.ts}/`;
+  const ul = $('files');
+  if (!S.files.length) { ul.innerHTML = '<li class="empty">Nothing written yet.</li>'; }
+  else ul.innerHTML = S.files.map(f => `<li class="${f.fresh && S.running ? 'new' : ''}">${f.name}<span>${f.note}</span></li>`).join('');
+  S.files.forEach(f => f.fresh = false);
+  $('manifest').textContent = S.manifest ? JSON.stringify(S.manifest, null, 2) : '—';
+}
+
+function renderVerdicts() {
+  for (const mode of MODES) {
+    const el = $(`vc-${mode}`), info = MODE_INFO[mode], s = S.summary[mode], live = S.modeLive[mode];
+    const pw = S.cfg.power;
+    const head = (pill, pillCls) => `<div class="vc-top"><div><div class="vc-mode">${info.title}</div><div class="vc-fw">${info.fw} · ${info.what}</div></div><span class="pill ${pillCls}">${pill}</span></div>`;
+    if (s) {
+      const v = s.verdict;
+      el.innerHTML = head(v.verdict, v.verdict) + `
+        <div class="vc-big">${fmtI(s.mean).replace(/ (mA|µA)$/, ' <small>$1</small>')}</div>
+        <div class="vc-unc">± ${fmtU(v.uncertainty)} (${v.uncertainty_source}) · limit ${fmtI(v.limit)}</div>
+        <canvas class="vc-strip" id="strip-${mode}"></canvas>
+        <div class="kv"><div><span>n</span><b>${s.n}</b></div><div><span>std</span><b>${fmtU(s.std)}</b></div><div><span>sem</span><b>${fmtU(s.sem)}</b></div><div><span>floor</span><b>${fmtU(v.instrument_floor)}</b></div></div>
+        <p class="vc-reason">${escapeHtml(v.reason)}</p>`;
+      drawStrip(mode, s.runs || [], s.mean, v.uncertainty, v.limit);
+    } else if (live === 'RUN') {
+      const rm = S.runMeans[mode] || [];
+      el.innerHTML = head('RUNNING', 'RUN') + `
+        <div class="vc-big">${rm.length ? fmtI(rm.reduce((a, b) => a + b, 0) / rm.length).replace(/ (mA|µA)$/, ' <small>$1</small>') : '—'}</div>
+        <div class="vc-unc">${rm.length}/${pw.repeats} independent runs · limit ${fmtI(pw.limits_mA[mode])}</div>
+        <canvas class="vc-strip" id="strip-${mode}"></canvas>
+        <p class="vc-reason">Each dot is the mean of one flash → reset → settle → dump cycle. The verdict waits for all ${pw.repeats}.</p>`;
+      if (rm.length) { const ss = summarize(rm); drawStrip(mode, rm, ss.mean, Math.max(ss.sem, pw.instrument_floor_mA[mode]), pw.limits_mA[mode]); }
+    } else if (S.mode === 'real' && live !== 'WAIT') {
+      el.innerHTML = head('SKIPPED', 'SKIP') + `
+        <div class="vc-big">— <small>no number</small></div>
+        <p class="vc-empty">The DK2605A reports <code>AEM Supported : False</code>, so the test skips itself rather than guess. A real number needs a BRD4338A on a BRD4002A mainboard (kit SiWx917-PK6031A), or a PPK2 wired into <code>Device.dump_current()</code>.</p>`;
+    } else {
+      el.innerHTML = head(live === 'WAIT' ? 'QUEUED' : 'NOT RUN', 'WAIT') + `<div class="vc-big">—</div><p class="vc-empty">Limit ${fmtI(pw.limits_mA[mode])}, meter floor ${fmtU(pw.instrument_floor_mA[mode])}. Press Start run.</p>`;
+    }
+  }
+}
+
+function setupCanvas(cv) {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const r = cv.getBoundingClientRect();
+  const w = Math.max(10, r.width), h = Math.max(10, r.height);
+  if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); }
+  const ctx = cv.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+  return { ctx, w, h };
+}
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+
+/* one dot per independent run, the mean ± u band, and the limit */
+function drawStrip(mode, runs, mean, u, limit) {
+  const cv = $(`strip-${mode}`); if (!cv) return;
+  const { ctx, w, h } = setupCanvas(cv);
+  const lo0 = Math.min(mean - u * 1.6, ...runs), hi0 = Math.max(mean + u * 1.6, ...runs);
+  let lo = lo0, hi = hi0;
+  const limitIn = limit >= lo0 - (hi0 - lo0) * 0.6 && limit <= hi0 + (hi0 - lo0) * 0.6;
+  if (limitIn) { lo = Math.min(lo, limit); hi = Math.max(hi, limit); }
+  const pad = (hi - lo) * 0.08 || 1e-6; lo -= pad; hi += pad;
+  const X = v => 8 + (v - lo) / (hi - lo) * (w - 16);
+  const yMid = 20;
+  ctx.fillStyle = css('--line'); ctx.fillRect(8, yMid, w - 16, 1);
+  ctx.fillStyle = 'rgba(240,164,58,.16)'; ctx.fillRect(X(mean - u), yMid - 9, X(mean + u) - X(mean - u), 18);
+  ctx.fillStyle = css('--accent'); ctx.fillRect(X(mean) - 1, yMid - 11, 2, 22);
+  ctx.fillStyle = css('--fg');
+  runs.forEach(r => { ctx.beginPath(); ctx.arc(X(r), yMid, 3, 0, Math.PI * 2); ctx.fill(); });
+  ctx.font = `10.5px ${css('--f-mono')}`; ctx.textBaseline = 'top';
+  ctx.fillStyle = css('--muted');
+  if (limitIn) {
+    ctx.strokeStyle = css('--fail'); ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.moveTo(X(limit), 4); ctx.lineTo(X(limit), 36); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle = css('--fail'); const lx = X(limit); ctx.textAlign = lx > w - 60 ? 'right' : 'left'; ctx.fillText('limit', lx + (lx > w - 60 ? -4 : 4), 34);
+  } else {
+    ctx.textAlign = 'right'; ctx.fillText(`limit ${fmtI(limit)} →`, w - 8, 33);
+  }
+  ctx.textAlign = 'left'; ctx.fillStyle = css('--muted'); ctx.fillText('mean ± u', 8, 33);
+}
+
+/* power_by_mode.png, redrawn: log axis, bars = mean, whiskers = verdict uncertainty */
+function drawBars() {
+  const { ctx, w, h } = setupCanvas($('bars'));
+  const modes = MODES.filter(m => S.summary[m]);
+  ctx.font = `11px ${css('--f-mono')}`;
+  if (!modes.length) {
+    ctx.fillStyle = css('--muted'); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    const lines = S.mode === 'real'
+      ? ['No chart: power_summary.json was never written.', 'test_99_make_plot fails with FileNotFoundError,', 'which is the honest outcome on a kit with no meter.']
+      : ['The chart appears after the three power tests finish.', 'Press Start run.'];
+    lines.forEach((l, i) => ctx.fillText(l, w / 2, h / 2 + (i - (lines.length - 1) / 2) * 17));
+    return;
+  }
+  const L = 52, R = 10, T = 14, B = 34;
+  const vals = modes.flatMap(m => { const s = S.summary[m]; return [Math.max(s.mean - s.verdict.uncertainty, s.mean * 0.2), s.mean + s.verdict.uncertainty, s.verdict.limit]; });
+  const lmin = Math.floor(Math.log10(Math.min(...vals))), lmax = Math.ceil(Math.log10(Math.max(...vals) * 6));
+  const Y = v => T + (lmax - Math.log10(v)) / (lmax - lmin) * (h - T - B);
+  ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+  for (let e = lmin; e <= lmax; e++) {
+    const y = Y(10 ** e);
+    ctx.strokeStyle = css('--line'); ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(L, y); ctx.lineTo(w - R, y); ctx.stroke();
+    ctx.fillStyle = css('--muted'); ctx.fillText(e >= 0 ? `${10 ** e} mA` : e >= -3 ? `${+(10 ** (e + 3)).toPrecision(1)} µA` : `${+(10 ** (e + 6)).toPrecision(1)} nA`, L - 6, y);
+  }
+  const slot = (w - L - R) / MODES.length;
+  MODES.forEach((m, i) => {
+    const cx = L + slot * (i + .5);
+    ctx.fillStyle = css('--muted'); ctx.textAlign = 'center'; ctx.textBaseline = 'top'; ctx.fillText(m, cx, h - B + 8);
+    const s = S.summary[m]; if (!s) return;
+    const v = s.verdict, bw = Math.min(54, slot * .5);
+    const col = v.verdict === 'PASS' ? css('--pass') : v.verdict === 'FAIL' ? css('--fail') : css('--inc');
+    const yb = Y(10 ** lmin), ym = Y(s.mean);
+    ctx.fillStyle = col + '55'; ctx.fillRect(cx - bw / 2, ym, bw, yb - ym);
+    ctx.fillStyle = col; ctx.fillRect(cx - bw / 2, ym, bw, 2);
+    const lower = Math.min(v.uncertainty, s.mean * 0.999);
+    const y1 = Y(s.mean + v.uncertainty), y2 = Y(s.mean - lower);
+    ctx.strokeStyle = css('--fg'); ctx.lineWidth = 1.4; ctx.beginPath();
+    ctx.moveTo(cx, y1); ctx.lineTo(cx, y2); ctx.moveTo(cx - 6, y1); ctx.lineTo(cx + 6, y1); ctx.moveTo(cx - 6, y2); ctx.lineTo(cx + 6, y2); ctx.stroke();
+    ctx.strokeStyle = css('--fail'); ctx.setLineDash([4, 3]); ctx.beginPath(); const yl = Y(v.limit); ctx.moveTo(cx - bw / 2 - 8, yl); ctx.lineTo(cx + bw / 2 + 8, yl); ctx.stroke(); ctx.setLineDash([]);
+    const yt = Math.min(y1, yl) - 4;
+    ctx.fillStyle = css('--fg'); ctx.textBaseline = 'bottom';
+    ctx.fillText(fmtI(s.mean), cx, yt - 13);
+    ctx.fillStyle = col; ctx.fillText(v.verdict, cx, yt);
+  });
+}
+
+/* live AEM trace of the current dump */
+const trace = {
+  data: null, n: 0, mode: null, mean: 0, std: 0,
+  clear() { this.data = null; this.n = 0; $('traceMode').textContent = 'no samples yet'; $('traceStat').textContent = ''; this.draw(); },
+  start(mode, data, mean, std) { this.data = data; this.n = 0; this.mode = mode; this.mean = mean; this.std = std; $('traceMode').textContent = MODE_INFO[mode].title; this.draw(); },
+  reveal(n) { this.n = n; if (!this.raf) this.raf = requestAnimationFrame(() => { this.raf = 0; this.draw(); }); },
+  draw() {
+    const { ctx, w, h } = setupCanvas($('trace'));
+    ctx.font = `10px ${css('--f-mono')}`;
+    if (!this.data) { ctx.fillStyle = css('--muted'); ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(S.mode === 'real' ? 'No AEM on this kit, so no samples' : 'Samples stream here during each aem dump', w / 2, h / 2); return; }
+    const total = this.data.length, n = this.n;
+    const lo = Math.max(0, this.mean - 4.2 * this.std), hi = this.mean + 4.2 * this.std;
+    const L = 46, T = 6, B = 14;
+    const Y = v => T + (1 - (v - lo) / (hi - lo)) * (h - T - B);
+    const X = i => L + i / (total - 1) * (w - L - 4);
+    ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+    [lo, this.mean, hi].forEach(v => { ctx.strokeStyle = css('--line'); ctx.beginPath(); ctx.moveTo(L, Y(v)); ctx.lineTo(w - 4, Y(v)); ctx.stroke(); ctx.fillStyle = css('--muted'); ctx.fillText(fmtI(v).replace(' ', ''), L - 4, Y(v)); });
+    ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic'; ctx.fillText('0 s', L, h - 2); ctx.textAlign = 'right'; ctx.fillText(`${S.cfg.power.duration_s} s`, w - 4, h - 2);
+    if (n < 2) return;
+    ctx.strokeStyle = css('--accent'); ctx.lineWidth = 1; ctx.globalAlpha = .9; ctx.beginPath();
+    const step = Math.max(1, Math.floor(total / ((w - L) * 1.5)));
+    for (let i = 0; i < n; i += step) { const x = X(i), y = Y(this.data[i]); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
+    ctx.stroke(); ctx.globalAlpha = 1;
+    let sum = 0; for (let i = 0; i < n; i++) sum += this.data[i];
+    $('traceStat').textContent = `${n}/${total} · mean ${fmtI(sum / n)}`;
+  },
+};
+
+/* config.yaml tab */
+function renderCfg() {
+  const p = S.cfg.power, dis = S.running ? 'disabled' : '';
+  const num = (id, v, step) => `<input id="${id}" type="number" inputmode="decimal" step="${step}" min="0" value="${v}" ${dis}>`;
+  $('cfg').innerHTML = `
+    <p class="hint">The harness reads every limit and setting from config.yaml. Change a value here, then press Start run to see how the verdict reacts.</p>
+    <div class="grp"><div class="row" style="padding-left:0"><span class="key">commander:</span><span class="ro">${S.mode === 'practice' ? 'fake_commander.py' : 'commander-cli.exe'}</span></div>
+    <div class="row" style="padding-left:0"><span class="key">boards.dut.serial:</span><span class="ro">${SERIAL}</span></div>
+    <div class="row" style="padding-left:0"><span class="key">boards.peer.serial:</span><span class="ro">${PEER_SERIAL}</span></div></div>
+    <div class="grp"><span class="key">power:</span>
+      <div class="row"><label class="key" for="c_settle">settle_s:</label>${num('c_settle', p.settle_s, 0.5)}</div>
+      <div class="row"><label class="key" for="c_dur">duration_s:</label>${num('c_dur', p.duration_s, 0.5)}</div>
+      <div class="row"><label class="key" for="c_rate">datarate_hz:</label><select id="c_rate" ${dis}>${[250, 500, 1000, 2000].map(r => `<option ${r === p.datarate_hz ? 'selected' : ''}>${r}</option>`).join('')}</select></div>
+      <div class="row"><label class="key" for="c_rep">repeats:</label>${num('c_rep', p.repeats, 1)}</div>
+      <div class="comment"># PASS if mean + u is below the limit</div>
+      <span class="key" style="padding-left:16px">limits_mA:</span>
+      ${MODES.map(m => `<div class="row l2"><label class="key" for="c_lim_${m}">${m}:</label>${num('c_lim_' + m, p.limits_mA[m], 'any')}</div>`).join('')}
+      <div class="comment"># what the AEM can resolve (UG573)</div>
+      <span class="key" style="padding-left:16px">instrument_floor_mA:</span>
+      ${MODES.map(m => `<div class="row l2"><label class="key" for="c_fl_${m}">${m}:</label>${num('c_fl_' + m, p.instrument_floor_mA[m], 'any')}</div>`).join('')}
+    </div>
+    <div class="whatif">
+      <button type="button" id="wiInc" ${dis}><b>Put a limit inside the meter's error</b><small>ps1_sleep limit 0.0025 mA: 1.8 µA ± 1 µA straddles it → INCONCLUSIVE</small></button>
+      <button type="button" id="wiFail" ${dis}><b>Put a limit below the mean</b><small>ps4_active limit 2.0 mA: 2.6 mA − 0.1 mA is still above it → FAIL</small></button>
+      <button type="button" id="wiReset" ${dis}><b>Restore config.yaml</b><small>The values checked into the repo</small></button>
+    </div>`;
+  $('cfg').querySelectorAll('input,select').forEach(el => el.addEventListener('change', () => { readCfgForm(); if (!S.running) { renderVerdicts(); } }));
+  $('wiInc').onclick = () => { readCfgForm(); S.cfg.power.limits_mA.ps1_sleep = 0.0025; renderCfg(); flashNote('ps1_sleep limit set to 0.0025 mA. Press Start run.'); };
+  $('wiFail').onclick = () => { readCfgForm(); S.cfg.power.limits_mA.ps4_active = 2.0; renderCfg(); flashNote('ps4_active limit set to 2.0 mA. Press Start run.'); };
+  $('wiReset').onclick = () => { S.cfg = structuredClone(DEFAULT_CFG); renderCfg(); flashNote('config.yaml values restored.'); };
+}
+function readCfgForm() {
+  if (!$('c_settle')) return;
+  const p = S.cfg.power, f = (id, d) => { const v = parseFloat($(id).value); return Number.isFinite(v) && v >= 0 ? v : d; };
+  p.settle_s = f('c_settle', 2); p.duration_s = Math.max(0.1, f('c_dur', 2)); p.datarate_hz = parseInt($('c_rate').value, 10);
+  p.repeats = Math.min(20, Math.max(1, Math.round(f('c_rep', 5))));
+  MODES.forEach(m => { p.limits_mA[m] = f('c_lim_' + m, DEFAULT_CFG.power.limits_mA[m]); p.instrument_floor_mA[m] = f('c_fl_' + m, DEFAULT_CFG.power.instrument_floor_mA[m]); });
+}
+function flashNote(t) { hud(t, 'Change takes effect on the next run'); }
+
+function renderSource() {
+  let t;
+  if (S.source === 'sample') t = 'At rest: docs/sample-run/power_summary.json, one practice run against the fake board. Simulated, not a measurement.';
+  else if (S.source === 'realxml') t = `At rest: results/${REAL_XML.ts}/ and results/last_run.xml, the physical DK2605A run. Device control works; no power numbers, because the kit has no meter.`;
+  else if (S.mode === 'practice') t = `This session, practice mode. Every current value was drawn from fake_commander.py's profiles and judged with stats.py's rule. Simulated.`;
+  else t = `This session, real-bench replay. Commands and outcomes follow results/last_run.xml from the physical DK2605A.`;
+  $('resSource').textContent = t;
+}
+function renderAll() { renderTests(); renderFiles(); renderVerdicts(); drawBars(); renderSource(); renderCfg(); trace.draw(); }
+
+function setRunning(r) {
+  $('startBtn').disabled = r; $('stopBtn').disabled = !r;
+  $('modePractice').disabled = r; $('modeReal').disabled = r;
+  $('startBtn').lastChild.textContent = r ? 'Running…' : 'Start run';
+  if (!r) $('runCount').textContent = S.tests.length ? `${S.tests.filter(t => t.status !== 'pending').length}/${S.tests.length} tests` : '—';
+}
+
+/* at-rest state for each mode */
+function loadRest(mode) {
+  S.mode = mode;
+  $('modePractice').setAttribute('aria-pressed', mode === 'practice');
+  $('modeReal').setAttribute('aria-pressed', mode === 'real');
+  const tr = $('truth');
+  tr.className = 'truth ' + (mode === 'practice' ? 'sim' : 'real');
+  tr.textContent = mode === 'practice' ? 'Simulated · numbers come from tools/fake_commander.py, not from a chip' : 'Replay of the real DK2605A run · AEM Supported: False · no power numbers';
+  S.tests = buildTests(); S.files = []; S.summary = {}; S.runMeans = {}; S.modeLive = {}; S.flashed = {}; S.pytestTail = '';
+  if (mode === 'practice') {
+    S.source = 'sample'; S.ts = 'sample-run';
+    for (const m of MODES) S.summary[m] = { ...SAMPLE[m], runs: [SAMPLE[m].min, SAMPLE[m].max], verdict: judge(SAMPLE[m], S.cfg.power.limits_mA[m], S.cfg.power.instrument_floor_mA[m]) };
+    S.files = [{ name: 'power_summary.json', note: 'docs/sample-run' }, { name: 'power_by_mode.png', note: 'docs/sample-run' }];
+    S.manifest = null;
+  } else {
+    S.source = 'realxml'; S.ts = REAL_XML.ts;
+    S.tests.forEach(t => { const st = REAL_XML.status[t.name]; t.status = st ? st[0] : 'passed'; t.msg = st ? st[1] : ''; });
+    S.pytestTail = `in ${REAL_XML.duration}`;
+    S.files = [{ name: 'manifest.json', note: 'firmware_flashed: {}' }];
+    S.flashed = {};
+    S.manifest = { ...buildManifest('Simplicity Commander 1v25p0b1995', '2026-08-21T07:37:25+00:00'), session: { started_utc: '2026-08-21T07:37:23+00:00', ended_utc: '2026-08-21T07:37:25+00:00' }, host: { hostname: 'ICTECE-L514-30', platform: 'Windows-11-10.0.26200-SP0', python: '3.12.10' }, git: { available: true, commit: 'ba385af5b222296322ae290b050c56d483183ae1', branch: 'main', dirty: false, dirty_files: [] } };
+  }
+  term.textContent = ''; screenLines.length = 0;
+  log(mode === 'practice'
+    ? '# Practice mode. config.yaml commander → python3 tools/fake_commander.py\n# The fake answers like a SiWx917-PK6031A with an AEM. Press Start run to watch the full session.'
+    : '# Real bench. config.yaml commander → commander-cli.exe, kit DK2605A, J-Link 446000788\n# Press Start run to replay the physical run from results/last_run.xml.', 'n');
+  $('nowTest').innerHTML = '<span class="file">tests/</span>— waiting to start';
+  setSteps([]); $('codeRef').textContent = ''; $('prog').style.width = '0';
+  setRunning(false);
+  bench.setMode(mode);
+  hud('Idle — press Start run', 'Drag to orbit · scroll to zoom · hover a part to see what it does in the harness');
+  renderAll();
+}
+
+/* =====================================================================
+   6.  The 3-D bench (Three.js). 1 scene unit = 1 mm.
+   ===================================================================== */
+const bench = createBench();
+
+function createBench() {
+  const api = {
+    state: { led: 'off', flash: null, glow: 0, glowTarget: 0, resetFlash: 0, sampling: false, mode: null, noAemAlert: 0, busyP: 0 },
+    packets() {}, busy() {}, setMode() {},
+  };
+  const stage = $('stage'), canvas = $('gl');
+  let renderer;
+  try {
+    renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+  } catch (e) {
+    stage.insertAdjacentHTML('beforeend', '<div class="nogl">WebGL is not available in this browser, so the 3-D bench is hidden. The run, console and results below still work.</div>');
+    return api;
+  }
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.05;
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x0b0f12);
+  scene.fog = new THREE.Fog(0x0b0f12, 420, 900);
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  scene.environment = pmrem.fromScene(new RoomEnvironment(renderer), 0.04).texture;
+
+  const camera = new THREE.PerspectiveCamera(38, 1, 0.5, 2000);
+  camera.position.set(30, 58, 70);
+  const controls = new OrbitControls(camera, canvas);
+  controls.target.set(-6, 0, 2);
+  controls.enableDamping = true;
+  controls.maxPolarAngle = Math.PI * 0.47;
+  controls.minDistance = 25; controls.maxDistance = 420;
+
+  scene.add(new THREE.HemisphereLight(0xcfe3ff, 0x1a1410, 0.55));
+  const key = new THREE.DirectionalLight(0xffffff, 1.6);
+  key.position.set(60, 140, 80); key.castShadow = true;
+  key.shadow.mapSize.set(2048, 2048);
+  Object.assign(key.shadow.camera, { left: -160, right: 120, top: 90, bottom: -90, near: 10, far: 400 });
+  key.shadow.bias = -0.0005;
+  scene.add(key);
+  const rim = new THREE.DirectionalLight(0x7fb8ff, 0.5); rim.position.set(-120, 60, -90); scene.add(rim);
+
+  /* ---- ESD mat ---- */
+  {
+    const c = document.createElement('canvas'); c.width = c.height = 512;
+    const x = c.getContext('2d');
+    x.fillStyle = '#1b262c'; x.fillRect(0, 0, 512, 512);
+    for (let i = 0; i < 9000; i++) { x.fillStyle = `rgba(255,255,255,${Math.random() * 0.025})`; x.fillRect(Math.random() * 512, Math.random() * 512, 1, 1); }
+    x.strokeStyle = 'rgba(160,190,205,.10)'; x.lineWidth = 2;
+    for (let i = 0; i <= 512; i += 64) { x.beginPath(); x.moveTo(i, 0); x.lineTo(i, 512); x.moveTo(0, i); x.lineTo(512, i); x.stroke(); }
+    const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(12, 12); t.anisotropy = 8;
+    const mat = new THREE.Mesh(new THREE.PlaneGeometry(1000, 1000), new THREE.MeshStandardMaterial({ map: t, roughness: 0.95, metalness: 0 }));
+    mat.rotation.x = -Math.PI / 2; mat.receiveShadow = true; scene.add(mat);
+  }
+
+  /* ---- materials ---- */
+  const M = {
+    pcb: new THREE.MeshStandardMaterial({ color: 0x0c0e10, roughness: 0.55, metalness: 0.05 }),
+    ic: new THREE.MeshStandardMaterial({ color: 0x18191b, roughness: 0.62, metalness: 0.1 }),
+    gold: new THREE.MeshStandardMaterial({ color: 0xd9a948, roughness: 0.28, metalness: 1 }),
+    tin: new THREE.MeshStandardMaterial({ color: 0xc9ccd0, roughness: 0.22, metalness: 1 }),
+    steel: new THREE.MeshStandardMaterial({ color: 0xaeb3b8, roughness: 0.35, metalness: 1 }),
+    black: new THREE.MeshStandardMaterial({ color: 0x050506, roughness: 0.8 }),
+    rubber: new THREE.MeshStandardMaterial({ color: 0x15171a, roughness: 0.75 }),
+    ceramic: new THREE.MeshStandardMaterial({ color: 0xe8e2d4, roughness: 0.55 }),
+    whiteplastic: new THREE.MeshStandardMaterial({ color: 0xe9e6dd, roughness: 0.6 }),
+    tan: new THREE.MeshStandardMaterial({ color: 0xb59466, roughness: 0.6 }),
+    glass: new THREE.MeshPhysicalMaterial({ color: 0x9fb6c2, roughness: 0.08, metalness: 0, transmission: 0.6, thickness: 0.5, transparent: true, opacity: 0.85 }),
+  };
+
+  const pickables = [];
+  const info = (obj, title, body, code) => { obj.userData.info = { title, body, code }; pickables.push(obj); return obj; };
+
+  function labelTexture(lines, { w = 256, h = 256, bg = '#18191b', fg = 'rgba(200,203,207,.78)', size = 30, dot = true } = {}) {
+    const c = document.createElement('canvas'); c.width = w; c.height = h;
+    const x = c.getContext('2d');
+    x.fillStyle = bg; x.fillRect(0, 0, w, h);
+    for (let i = 0; i < 900; i++) { x.fillStyle = `rgba(255,255,255,${Math.random() * .03})`; x.fillRect(Math.random() * w, Math.random() * h, 1, 1); }
+    x.fillStyle = fg; x.font = `600 ${size}px "IBM Plex Mono", monospace`; x.textAlign = 'center'; x.textBaseline = 'middle';
+    lines.forEach((l, i) => x.fillText(l, w / 2, h / 2 + (i - (lines.length - 1) / 2) * size * 1.25));
+    if (dot) { x.beginPath(); x.arc(w * .14, h * .14, w * .04, 0, Math.PI * 2); x.fillStyle = 'rgba(255,255,255,.18)'; x.fill(); }
+    const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; return t;
+  }
+
+  /* ---- the board: BRD2605A, ~55 × 30 mm, black solder mask ---- */
+  const BL = 55, BW = 30, BT = 1.6;
+  const PX = 40; // canvas px per mm
+  const boardTex = (() => {
+    const c = document.createElement('canvas'); c.width = BL * PX; c.height = BW * PX;
+    const x = c.getContext('2d');
+    const X = mm => (mm + BL / 2) * PX, Y = mm => (mm + BW / 2) * PX;
+    const rr = (x0, y0, w, h, r) => { x.beginPath(); x.moveTo(x0 + r, y0); x.arcTo(x0 + w, y0, x0 + w, y0 + h, r); x.arcTo(x0 + w, y0 + h, x0, y0 + h, r); x.arcTo(x0, y0 + h, x0, y0, r); x.arcTo(x0, y0, x0 + w, y0, r); x.closePath(); };
+    rr(0, 0, c.width, c.height, 1.4 * PX); x.clip();
+    x.fillStyle = '#111416'; x.fillRect(0, 0, c.width, c.height);
+    // copper pour under mask
+    x.fillStyle = '#15191c'; x.fillRect(X(-27), Y(-14.3), X(20) - X(-27), Y(14.3) - Y(-14.3));
+    // antenna keep-out: no copper
+    x.fillStyle = '#0d0f11'; x.fillRect(X(20.3), 0, c.width - X(20.3), c.height);
+    // traces
+    x.strokeStyle = '#1d2226'; x.lineCap = 'round'; x.lineJoin = 'round';
+    const tr = (pts, wmm = 0.25) => { x.lineWidth = wmm * PX; x.beginPath(); pts.forEach(([a, b], i) => i ? x.lineTo(X(a), Y(b)) : x.moveTo(X(a), Y(b))); x.stroke(); };
+    for (let k = 0; k < 13; k++) { const px = -15.24 + k * 2.54; tr([[px, -13], [px, -11.5], [px * 0.55 + 4, -7]]); tr([[px, 13], [px, 11.5], [px * 0.55 + 4, 7.5]]); }
+    for (let k = 0; k < 6; k++) { tr([[-10, -6 + k * 1.2], [-4, -6 + k * 1.2], [3.5, -3 + k * 0.6], [5.5, -3 + k * 0.6]]); }
+    tr([[-24, -1], [-19, -1], [-19, -3.5]], 0.4); tr([[-24, 1], [-19, 1], [-19, 3]], 0.4);
+    // 50-ohm RF feed: SoC → match → antenna, and the branch to the U.FL
+    x.strokeStyle = '#262c31'; tr([[12.5, -2.5], [16, -2.5], [18.5, 0], [22.5, 0]], 0.55); tr([[16, -2.5], [16.5, -6]], 0.55);
+    // vias
+    let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    for (let i = 0; i < 260; i++) {
+      const vx = -26 + rnd() * 46, vz = -13.5 + rnd() * 27;
+      x.fillStyle = '#23292d'; x.beginPath(); x.arc(X(vx), Y(vz), 0.32 * PX, 0, Math.PI * 2); x.fill();
+      x.fillStyle = '#070809'; x.beginPath(); x.arc(X(vx), Y(vz), 0.14 * PX, 0, Math.PI * 2); x.fill();
+    }
+    // silkscreen
+    const silk = '#e6e4dc';
+    x.strokeStyle = silk; x.fillStyle = silk; x.lineWidth = 0.15 * PX;
+    const box = (cx, cz, w, h) => x.strokeRect(X(cx - w / 2), Y(cz - h / 2), w * PX, h * PX);
+    const txt = (s, cx, cz, size = 1.1, align = 'center', weight = 600) => { x.font = `${weight} ${size * PX}px "IBM Plex Sans Condensed", "Arial Narrow", sans-serif`; x.textAlign = align; x.textBaseline = 'middle'; x.fillText(s, X(cx), Y(cz)); };
+    box(9, -2.5, 8.2, 8.2); txt('U1', 9, -7.6, 0.9);
+    box(-14.5, -3.5, 10.2, 10.2); txt('J-LINK OB', -14.5, 2.6, 0.95);
+    box(1.5, -3, 3.8, 2.8); txt('PSRAM', 1.5, -5.2, 0.8);
+    box(7.5, 10, 4.6, 4.6); box(12.5, 10, 4.6, 4.6); txt('BTN0', 7.5, 7.0, 0.85); txt('BTN1', 12.5, 7.0, 0.85);
+    box(2.5, 10, 2.6, 2.6); txt('LED0', 2.5, 7.6, 0.85);
+    box(-6.5, -9, 4, 4); txt('RHT', -6.5, -11.6, 0.8);
+    box(-1.5, -9, 5, 5); txt('IMU', -1.5, -12.1, 0.8);
+    box(-7, 9.5, 3, 3); txt('ALS', -7, 7.3, 0.8);
+    box(-2, 4.5, 4.4, 3.6); box(17.5, 9.5, 4.4, 3.6); txt('MIC0', -2, 7.0, 0.8); txt('MIC1', 17.5, 12.2, 0.8);
+    box(16.5, -8.5, 3.6, 3.6); txt('RF', 16.5, -11, 0.8);
+    txt('QWIIC', -21.5, -6.4, 0.85);
+    txt('VMCU', -22.5, 11.9, 0.8); txt('GND', -19.5, 11.9, 0.8);
+    x.setLineDash([0.5 * PX, 0.4 * PX]); x.strokeRect(X(20.5), Y(-13.5), (27 - 20.5) * PX, 27 * PX); x.setLineDash([]);
+    x.save(); x.translate(X(26.2), Y(0)); x.rotate(-Math.PI / 2); x.font = `600 ${0.9 * PX}px "IBM Plex Sans Condensed", sans-serif`; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText('ANT · KEEP OUT', 0, 0); x.restore();
+    txt('SiWx917 Wi-Fi 6 + BLE Dev Kit', -9.6, -0.2, 1.05, 'left', 700);
+    txt('BRD2605A  Rev A02', -9.6, 1.4, 0.95, 'left', 500);
+    for (let k = 0; k < 13; k++) { txt(String(k + 1), -15.24 + k * 2.54, -11.6, 0.75); txt(String(26 - k), -15.24 + k * 2.54, 11.6, 0.75); }
+    // pin-1 dots
+    [[4.4, -7], [-20.1, -9]].forEach(([a, b]) => { x.beginPath(); x.arc(X(a), Y(b), 0.3 * PX, 0, Math.PI * 2); x.fill(); });
+    const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = renderer.capabilities.getMaxAnisotropy(); return t;
+  })();
+
+  function makeBoard() {
+    const g = new THREE.Group();
+    const pcb = new THREE.Mesh(new RoundedBoxGeometry(BL, BT, BW, 4, 0.7), M.pcb);
+    pcb.castShadow = true; pcb.receiveShadow = true; g.add(pcb);
+    const top = new THREE.Mesh(new THREE.PlaneGeometry(BL, BW), new THREE.MeshStandardMaterial({ map: boardTex, roughness: 0.42, metalness: 0.05, transparent: true }));
+    top.rotation.x = -Math.PI / 2; top.position.y = BT / 2 + 0.005; top.receiveShadow = true; g.add(top);
+    info(pcb, 'BRD2605A dev kit board', 'The device under test. config.yaml calls it board "dut" and addresses it only by J-Link serial 446000788.', 'config.yaml → boards.dut.serial');
+    const y0 = BT / 2;
+    const put = (geo, mat, x, z, h, ry = 0) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y0 + h / 2, z); m.rotation.y = ry; m.castShadow = true; m.receiveShadow = true; g.add(m); return m; };
+    const bx = (w, h, d, mat, x, z, ry) => put(new THREE.BoxGeometry(w, h, d), mat, x, z, h, ry);
+
+    // castellated edge pads, 2 × 13 on 2.54 mm pitch
+    for (let k = 0; k < 13; k++) for (const s of [-1, 1]) {
+      const px = -15.24 + k * 2.54;
+      const pad = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.06, 2.2), M.gold); pad.position.set(px, y0 + 0.03, s * (BW / 2 - 1.1)); g.add(pad);
+      const hole = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 0.07, 16), M.black); hole.position.set(px, y0 + 0.04, s * (BW / 2 - 0.2)); g.add(hole);
+    }
+    const edgeHit = new THREE.Mesh(new THREE.BoxGeometry(32, 0.5, 2.4), new THREE.MeshBasicMaterial({ visible: false })); edgeHit.position.set(0, y0 + 0.2, -(BW / 2 - 1.1)); g.add(edgeHit);
+    info(edgeHit, '26 breakout pads', 'GPIO, power and ground on castellated edges. Not used by Level 1; a future RF or OTA test would wire the peer board here.');
+
+    // QFN helper: gold lead frame peeking out under a molded body with a laser-marked top
+    const qfn = (s, h, x, z, lines, size) => {
+      bx(s + 0.3, 0.08, s + 0.3, M.tin, x, z);
+      const top = new THREE.MeshStandardMaterial({ map: labelTexture(lines, { size }), roughness: 0.6, metalness: 0.08 });
+      const m = new THREE.Mesh(new THREE.BoxGeometry(s, h, s), [M.ic, M.ic, top, M.ic, M.ic, M.ic]);
+      m.position.set(x, y0 + 0.08 + h / 2, z); m.castShadow = true; g.add(m); return m;
+    };
+    const soc = qfn(7, 0.85, 9, -2.5, ['SiWG917', 'M111MGTBA', '2524 TW'], 30);
+    info(soc, 'SiWG917M111MGTBA SoC', 'The chip being validated: Wi-Fi 6 + BLE 5.4, an ARM Cortex-M4 application core and 8 MB of in-package flash. Firmware arrives as an RPS image; it will not boot a raw .s37 or .hex.', 'Device.flash() → commander rps load');
+    const dbg = qfn(9, 0.9, -14.5, -3.5, ['EFM32GG12', 'J-LINK OB'], 26);
+    info(dbg, 'On-board J-Link debugger', 'Turns USB into SWD. Every Commander call (probe, rps load, device reset) goes through this chip. On this kit it has no AEM current meter, so probe prints “AEM Supported : False”.', 'Device._run()  ·  dvharness/device.py:59');
+    const psram = bx(3, 0.55, 2, M.ic, 1.5, -3);
+    info(psram, '64 Mbit QSPI PSRAM', 'External RAM for the SoC. Not exercised by the power tests.');
+    const xt1 = bx(2.0, 0.6, 1.6, M.tin, 9, 3.8); info(xt1, '40 MHz crystal', 'Reference clock for the radio.');
+    const xt2 = bx(3.2, 0.8, 2.5, M.tin, -14.5, 4.6); info(xt2, 'Debugger crystal', 'Clock for the J-Link MCU.');
+    bx(3, 1.1, 1.6, M.ic, -20, 6);
+
+    // USB-C receptacle, opening toward −x
+    const usb = put(new RoundedBoxGeometry(7.4, 3.2, 9, 3, 1.2), M.steel, -24.6, 0, 3.2);
+    const mouth = new THREE.Mesh(new THREE.BoxGeometry(0.4, 2.4, 8.1), M.black); mouth.position.set(-28.15, y0 + 1.6, 0); g.add(mouth);
+    const tongue = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.6, 5.6), M.ic); tongue.position.set(-28.0, y0 + 1.6, 0); g.add(tongue);
+    info(usb, 'USB-C to the host', 'The only cable on the bench. Commander commands travel in; probe text, DONE lines and AEM samples travel back.', 'shlex.split(commander) + args + ["--serialno", serial]');
+
+    // Qwiic (JST-SH 4-pin), opening toward −z
+    const qw = bx(6, 2.9, 4.25, M.whiteplastic, -21.5, -10.2);
+    const qwm = new THREE.Mesh(new THREE.BoxGeometry(4.6, 1.6, 0.4), M.black); qwm.position.set(-21.5, y0 + 1.6, -12.35); g.add(qwm);
+    info(qw, 'Qwiic connector', 'I²C expansion for add-on sensors. Unused by the harness.');
+
+    // sensors
+    const rht = bx(3, 0.9, 3, M.ic, -6.5, -9); const ptfe = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.05, 1.7), M.whiteplastic); ptfe.position.set(-6.5, y0 + 0.93, -9); g.add(ptfe);
+    info(rht, 'Si7021 humidity + temperature', 'On-board sensor, powered down unless an application enables its power domain.');
+    const imu = bx(4, 0.9, 4, M.ic, -1.5, -9); info(imu, 'ICM-20689 6-axis IMU', 'On-board motion sensor.');
+    const als = bx(2, 0.65, 2, M.glass, -7, 9.5); info(als, 'VEML6035 ambient light', 'On-board light sensor.');
+    for (const [mx, mz, nm] of [[-2, 4.5, 'MIC0'], [17.5, 9.5, 'MIC1']]) {
+      const mic = bx(3.5, 1, 2.65, M.tin, mx, mz);
+      const port = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 0.05, 16), M.black); port.position.set(mx, y0 + 1.03, mz); g.add(port);
+      info(mic, `ICS-43434 microphone (${nm})`, 'One of two MEMS microphones (stereo pair).');
+    }
+
+    // buttons + LED
+    for (const [bxp, nm] of [[7.5, 'BTN0'], [12.5, 'BTN1']]) {
+      const base = bx(4, 1.1, 4, M.steel, bxp, 10);
+      const cap = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.1, 0.7, 24), M.rubber); cap.position.set(bxp, y0 + 1.45, 10); cap.castShadow = true; g.add(cap);
+      info(base, `Push button ${nm}`, 'Tests never press it: every test must run unattended, with no manual steps.');
+    }
+    const ledMat = new THREE.MeshStandardMaterial({ color: 0xf2f2ee, emissive: 0x000000, emissiveIntensity: 2.2, roughness: 0.3 });
+    const led = bx(1.8, 0.6, 1.8, ledMat, 2.5, 10);
+    info(led, 'RGB LED', 'In this simulation it shows the step: blue while flashing, white on reset, green while the CPU runs, blue pulses on each BLE advert.');
+
+    // power probe points
+    for (const [px, nm] of [[-22.5, 'VMCU'], [-19.5, 'GND']]) {
+      const pp = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 0.9, 0.08, 24), M.gold); pp.position.set(px, y0 + 0.05, 10); g.add(pp);
+      info(pp, `Probe point ${nm}`, 'Where an external meter such as a Nordic PPK2 would clip on. Wire its readings into Device.dump_current() and the power tests run unchanged.', 'Device.dump_current() · device.py:163');
+    }
+
+    // RF: U.FL + match + chip antenna
+    const ufl = bx(2.6, 0.3, 2.6, M.tin, 16.5, -8.5);
+    const collar = new THREE.Mesh(new THREE.CylinderGeometry(1.0, 1.0, 1.0, 24, 1, true), M.tin); collar.position.set(16.5, y0 + 0.8, -8.5); g.add(collar);
+    const pin = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.9, 12), M.gold); pin.position.set(16.5, y0 + 0.75, -8.5); g.add(pin);
+    info(ufl, 'U.FL RF connector', 'For conducted RF measurements. The future PER-sweep test (Level 2) would cable the peer board here instead of going over the air.');
+    const ant = bx(2.4, 1.2, 7, M.ceramic, 23.6, 0);
+    for (const s of [-1, 1]) bx(2.45, 1.22, 0.7, M.tin, 23.6, s * 3.2);
+    info(ant, '2.4 GHz ceramic chip antenna', 'Radiates Wi-Fi and BLE. Rings appear here on each BLE advertisement in the ble_adv mode.');
+
+    // passives: 0402s scattered around the ICs
+    const capGeo = new THREE.BoxGeometry(1.0, 0.5, 0.5);
+    const passives = [];
+    let s2 = 11; const r2 = () => (s2 = (s2 * 48271) % 2147483647) / 2147483647;
+    const ring = (cx, cz, rad, n) => { for (let i = 0; i < n; i++) { const a = i / n * Math.PI * 2 + r2() * .2; passives.push([cx + Math.cos(a) * rad, cz + Math.sin(a) * rad, r2() < .5 ? 0 : Math.PI / 2, r2() < .7]); } };
+    ring(9, -2.5, 5.6, 14); ring(-14.5, -3.5, 5.8, 12); ring(1.5, -3, 2.6, 4);
+    [[15, -2.5], [16.6, -1.2], [18.6, -0.4], [19.6, 1], [16.5, -4.6]].forEach(([a, b]) => passives.push([a, b, 0, true]));
+    [[-20, 3.5], [-17.5, 7.5], [-22, 7.5], [-10, 7], [-3, 1], [4.5, 7.5], [6, 4.5], [13, 5], [-24, -5.5], [-24, 5.5]].forEach(([a, b]) => passives.push([a, b, Math.PI / 2, false]));
+    const body = new THREE.InstancedMesh(capGeo, M.tan, passives.length);
+    const body2 = new THREE.InstancedMesh(capGeo, M.ic, passives.length);
+    const endGeo = new THREE.BoxGeometry(0.22, 0.52, 0.52);
+    const ends = new THREE.InstancedMesh(endGeo, M.tin, passives.length * 2);
+    const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(1, 1, 1), hide = new THREE.Vector3(0, 0, 0);
+    passives.forEach(([px, pz, ry, isCap], i) => {
+      q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), ry);
+      m4.compose(new THREE.Vector3(px, y0 + 0.25, pz), q, isCap ? sc : hide); body.setMatrixAt(i, m4);
+      m4.compose(new THREE.Vector3(px, y0 + 0.25, pz), q, isCap ? hide : sc); body2.setMatrixAt(i, m4);
+      for (const s of [-1, 1]) { const off = new THREE.Vector3(s * 0.42, 0, 0).applyQuaternion(q); m4.compose(new THREE.Vector3(px + off.x, y0 + 0.25, pz + off.z), q, sc); ends.setMatrixAt(i * 2 + (s > 0 ? 1 : 0), m4); }
+    });
+    [body, body2, ends].forEach(o => { o.castShadow = true; g.add(o); });
+
+    // rubber feet
+    for (const [fx, fz] of [[-24, -12], [-24, 12], [24, -12], [24, 12]]) { const f = new THREE.Mesh(new THREE.CylinderGeometry(2, 2, 3, 20), M.rubber); f.position.set(fx, -BT / 2 - 1.5, fz); f.castShadow = true; g.add(f); }
+    return { g, soc, led, ledMat, ant, usb, dbg };
+  }
+
+  const B = makeBoard();
+  const boardY = BT / 2 + 3;
+  B.g.position.y = boardY;
+  scene.add(B.g);
+  const top = boardY + BT / 2;
+  const P = { soc: new THREE.Vector3(9, top + 1, -2.5), led: new THREE.Vector3(2.5, top + 0.8, 10), ant: new THREE.Vector3(23.6, top + 1.2, 0), dbg: new THREE.Vector3(-14.5, top + 1, -3.5), usbMouth: new THREE.Vector3(-29, top + 1.6, 0), probe: new THREE.Vector3(-21, top, 10) };
+
+  /* ---- the host laptop running pytest ---- */
+  const LAP = new THREE.Group();
+  LAP.position.set(-175, 0, -40); LAP.rotation.y = 0.28;
+  const lapMat = new THREE.MeshStandardMaterial({ color: 0x3a3f45, roughness: 0.38, metalness: 0.85 });
+  const base = new THREE.Mesh(new RoundedBoxGeometry(96, 4, 64, 4, 1.8), lapMat); base.position.y = 2; base.castShadow = true; base.receiveShadow = true; LAP.add(base);
+  const kb = new THREE.Mesh(new THREE.PlaneGeometry(82, 26), new THREE.MeshStandardMaterial({ color: 0x15181b, roughness: 0.9 })); kb.rotation.x = -Math.PI / 2; kb.position.set(0, 4.02, -2); LAP.add(kb);
+  const pad = new THREE.Mesh(new THREE.PlaneGeometry(34, 20), new THREE.MeshStandardMaterial({ color: 0x31363c, roughness: 0.45, metalness: 0.6 })); pad.rotation.x = -Math.PI / 2; pad.position.set(0, 4.02, 20); LAP.add(pad);
+  const lid = new THREE.Group(); lid.position.set(0, 4, -32); lid.rotation.x = -0.32; LAP.add(lid);
+  const lidBox = new THREE.Mesh(new RoundedBoxGeometry(96, 60, 3, 4, 1.4), lapMat); lidBox.position.set(0, 30, -1.5); lidBox.castShadow = true; lid.add(lidBox);
+  const scrCanvas = document.createElement('canvas'); scrCanvas.width = 1024; scrCanvas.height = 600;
+  const scrTex = new THREE.CanvasTexture(scrCanvas); scrTex.colorSpace = THREE.SRGBColorSpace; scrTex.anisotropy = 8;
+  const screen = new THREE.Mesh(new THREE.PlaneGeometry(88, 52), new THREE.MeshBasicMaterial({ map: scrTex, toneMapped: false })); screen.position.set(0, 31, 0.02); lid.add(screen);
+  info(base, 'Host computer running pytest', 'Runs `python3 -m pytest`. conftest.py reads config.yaml, builds the Device object and opens results/<timestamp>/. Nothing here needs a person at the keyboard.', 'tests/conftest.py');
+  info(screen, 'Terminal', 'Mirrors the console on the right: every Commander command and its output.');
+  scene.add(LAP);
+  const lapPort = new THREE.Vector3(); LAP.localToWorld(lapPort.set(48.5, 2.2, 6));
+
+  function drawScreen() {
+    const x = scrCanvas.getContext('2d');
+    x.fillStyle = '#0a0d10'; x.fillRect(0, 0, 1024, 600);
+    x.fillStyle = '#1a2229'; x.fillRect(0, 0, 1024, 34);
+    x.fillStyle = '#8b98a5'; x.font = '500 18px "IBM Plex Mono", monospace'; x.textBaseline = 'middle'; x.fillText('siwx917-dv-harness — python3 -m pytest', 18, 17);
+    const cols = { c: '#5cc8e8', o: '#aab5bf', n: '#66737f', t: '#e3e8ed', P: '#4cc38a', F: '#ef5b5b', S: '#7d8b99', I: '#e8c547' };
+    x.font = '500 17px "IBM Plex Mono", monospace'; x.textBaseline = 'top';
+    const wrapped = [];
+    for (const [t, c] of screenLines) for (const part of t.split('\n')) { for (let i = 0; i < Math.max(1, part.length); i += 92) wrapped.push([part.slice(i, i + 92), c]); }
+    const rows = wrapped.slice(-26);
+    rows.forEach(([t, c], i) => { x.fillStyle = cols[c] || '#aab5bf'; x.fillText(t, 16, 46 + i * 21); });
+  }
+
+  /* ---- USB cable from laptop to board ---- */
+  const curve = new THREE.CatmullRomCurve3([
+    lapPort.clone(),
+    lapPort.clone().add(new THREE.Vector3(14, 0, 4)),
+    new THREE.Vector3(-95, 1.6, 30),
+    new THREE.Vector3(-62, 1.6, 22),
+    new THREE.Vector3(-42, 1.6, 6),
+    new THREE.Vector3(-34, P.usbMouth.y - 0.4, 0),
+    new THREE.Vector3(-30.2, P.usbMouth.y, 0),
+  ]);
+  const cable = new THREE.Mesh(new THREE.TubeGeometry(curve, 160, 1.5, 14, false), new THREE.MeshStandardMaterial({ color: 0x1c1f23, roughness: 0.55 }));
+  cable.castShadow = true; scene.add(cable);
+  info(cable, 'USB cable', 'Cyan dots are commands from Device._run(); amber dots are replies and AEM samples coming back.');
+  const plug = new THREE.Mesh(new RoundedBoxGeometry(10, 4.4, 9.2, 3, 1.4), new THREE.MeshStandardMaterial({ color: 0x24282d, roughness: 0.5 }));
+  plug.position.set(-33.6, P.usbMouth.y, 0); plug.castShadow = true; scene.add(plug);
+
+  /* ---- packets on the cable ---- */
+  const pk = [];
+  const pkGeo = new THREE.SphereGeometry(1.25, 14, 10);
+  const pkDown = new THREE.MeshBasicMaterial({ color: 0x5cc8e8, toneMapped: false });
+  const pkUp = new THREE.MeshBasicMaterial({ color: 0xf0a43a, toneMapped: false });
+  api.packets = (dir, n) => {
+    for (let i = 0; i < n; i++) {
+      const m = new THREE.Mesh(pkGeo, dir === 'down' ? pkDown : pkUp);
+      m.userData = { t: -i * 0.08, dir, v: 0.75 + Math.random() * .2 };
+      scene.add(m); pk.push(m);
+    }
+  };
+
+  /* ---- SoC glow, flash progress ring, radio rings ---- */
+  const glowTex = (() => { const c = document.createElement('canvas'); c.width = c.height = 128; const x = c.getContext('2d'); const gr = x.createRadialGradient(64, 64, 0, 64, 64, 64); gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(.25, 'rgba(255,255,255,.45)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); x.fillStyle = gr; x.fillRect(0, 0, 128, 128); return new THREE.CanvasTexture(c); })();
+  const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: 0xf0a43a, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending }));
+  glow.position.copy(P.soc).add(new THREE.Vector3(0, 0.6, 0)); glow.scale.set(22, 22, 1); scene.add(glow);
+  const socLight = new THREE.PointLight(0xf0a43a, 0, 40, 2); socLight.position.copy(P.soc).add(new THREE.Vector3(0, 4, 0)); scene.add(socLight);
+  const ledGlow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: 0x4cc38a, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending }));
+  ledGlow.position.copy(P.led).add(new THREE.Vector3(0, 0.4, 0)); ledGlow.scale.set(9, 9, 1); scene.add(ledGlow);
+  const ledLight = new THREE.PointLight(0x4cc38a, 0, 18, 2); ledLight.position.copy(P.led).add(new THREE.Vector3(0, 2, 0)); scene.add(ledLight);
+
+  const ringMat = new THREE.MeshBasicMaterial({ color: 0xf0a43a, side: THREE.DoubleSide, transparent: true, opacity: .95, toneMapped: false });
+  const ringBg = new THREE.Mesh(new THREE.RingGeometry(6.2, 6.9, 64), new THREE.MeshBasicMaterial({ color: 0x2b333b, side: THREE.DoubleSide, transparent: true, opacity: .8 }));
+  ringBg.rotation.x = -Math.PI / 2; ringBg.position.copy(P.soc).setY(top + 0.12); ringBg.visible = false; scene.add(ringBg);
+  let ringFg = null, lastRingP = -1;
+  const setRing = p => {
+    if (p == null) { ringBg.visible = false; if (ringFg) ringFg.visible = false; lastRingP = -1; return; }
+    ringBg.visible = true;
+    if (Math.abs(p - lastRingP) < 0.01) return;
+    lastRingP = p;
+    if (ringFg) { scene.remove(ringFg); ringFg.geometry.dispose(); }
+    ringFg = new THREE.Mesh(new THREE.RingGeometry(6.2, 6.9, 64, 1, Math.PI / 2, -Math.max(0.001, p) * Math.PI * 2), ringMat);
+    ringFg.rotation.x = -Math.PI / 2; ringFg.position.copy(P.soc).setY(top + 0.14); scene.add(ringFg);
+  };
+
+  const waves = [];
+  const waveGeo = new THREE.TorusGeometry(1, 0.08, 6, 64);
+  const spawnWave = () => { for (let k = 0; k < 2; k++) { const m = new THREE.Mesh(waveGeo, new THREE.MeshBasicMaterial({ color: 0x5cc8e8, transparent: true, opacity: .9, toneMapped: false })); m.rotation.x = -Math.PI / 2; m.position.copy(P.ant); m.userData = { age: -k * 0.18 }; m.visible = false; scene.add(m); waves.push(m); } };
+
+  /* ---- AEM (simulated) and the peer board ---- */
+  const aem = new THREE.Group();
+  const aemBox = new THREE.Mesh(new RoundedBoxGeometry(34, 11, 20, 3, 2), new THREE.MeshStandardMaterial({ color: 0x0f2a33, roughness: 0.3, metalness: 0.2, transparent: true, opacity: 0.55 }));
+  aemBox.position.y = 5.5; aem.add(aemBox);
+  const aemEdges = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(34, 11, 20)), new THREE.LineBasicMaterial({ color: 0x5cc8e8, transparent: true, opacity: .6 }));
+  aemEdges.position.y = 5.5; aem.add(aemEdges);
+  const aemFace = new THREE.Mesh(new THREE.PlaneGeometry(30, 7), new THREE.MeshBasicMaterial({ map: labelTexture(['AEM · SIMULATED', 'fake_commander.py'], { w: 512, h: 120, bg: '#0b1d24', fg: '#5cc8e8', size: 34, dot: false }), toneMapped: false }));
+  aemFace.position.set(0, 5.5, 10.05); aem.add(aemFace);
+  aem.position.set(-30, 0, 40);
+  info(aemBox, 'AEM, simulated', 'Practice mode only. The fake Commander pretends to be a SiWx917-PK6031A whose BRD4002A mainboard carries an Advanced Energy Monitor, and invents current samples from fixed profiles.', 'tools/fake_commander.py → PROFILES');
+  scene.add(aem);
+  const senseCurve = new THREE.CatmullRomCurve3([new THREE.Vector3(-30, 6, 30), new THREE.Vector3(-28, 9, 20), new THREE.Vector3(-22, top + 4, 12), P.probe.clone().add(new THREE.Vector3(0, 0.2, 0))]);
+  const sense = new THREE.Line(new THREE.BufferGeometry().setFromPoints(senseCurve.getPoints(60)), new THREE.LineDashedMaterial({ color: 0x5cc8e8, dashSize: 1.6, gapSize: 1.2, transparent: true, opacity: .8 }));
+  sense.computeLineDistances(); scene.add(sense);
+
+  const peer = makeBoard().g;
+  peer.traverse(o => { if ((o.isMesh || o.isInstancedMesh) && o.material.visible === false) { o.visible = false; return; } if (o.isMesh || o.isInstancedMesh) { o.material = new THREE.MeshBasicMaterial({ color: 0x5cc8e8, wireframe: true, transparent: true, opacity: 0.07 }); o.castShadow = false; o.userData = {}; } });
+  peer.position.set(62, boardY, -42); peer.rotation.y = -0.5; scene.add(peer);
+  // remove the peer's meshes from picking, then add one hit box for it
+  for (let i = pickables.length - 1; i >= 0; i--) { let o = pickables[i], inPeer = false; while (o) { if (o === peer) { inPeer = true; break; } o = o.parent; } if (inPeer) pickables.splice(i, 1); }
+  const peerHit = new THREE.Mesh(new THREE.BoxGeometry(BL, 4, BW), new THREE.MeshBasicMaterial({ visible: false })); peerHit.position.copy(peer.position); peerHit.rotation.copy(peer.rotation); scene.add(peerHit);
+  info(peerHit, 'Peer board (not connected)', 'config.yaml lists a second kit, serial 440654321, for Level 2. A PER-vs-transmit-power sweep needs a transmitter and a receiver, so that pillar is designed but not written.', 'config.yaml → boards.peer');
+
+  /* ---- HTML labels pinned to 3-D points ---- */
+  const LBL = [
+    { p: P.soc.clone().add(new THREE.Vector3(0, 1, 0)), t: 'SiWG917 SoC · DUT' },
+    { p: P.dbg.clone().add(new THREE.Vector3(0, 1, 0)), t: 'J-Link debugger' },
+    { p: P.ant.clone().add(new THREE.Vector3(0, 1, 0)), t: 'Chip antenna' },
+    { p: new THREE.Vector3(-21, top + 0.5, 10), t: 'Probe points' },
+    { p: P.led.clone().add(new THREE.Vector3(0, 0.6, 0)), t: 'LED' },
+    { p: new THREE.Vector3(-175, 62, -70), t: 'Host · pytest', far: true },
+    { p: new THREE.Vector3(-30, 13, 40), t: 'AEM · simulated', cls: 'sim', id: 'aem' },
+    { p: P.dbg.clone().add(new THREE.Vector3(0, 7, 0)), t: '✕ AEM Supported : False', cls: 'warn', id: 'noaem' },
+    { p: new THREE.Vector3(62, boardY + 5, -42), t: 'Peer 440654321 · not connected', cls: 'ghost', far: true },
+  ];
+  const lblRoot = $('labels');
+  LBL.forEach(l => { l.el = document.createElement('div'); l.el.className = 'lbl ' + (l.cls || ''); l.el.innerHTML = `<span>${l.t}</span>`; lblRoot.appendChild(l.el); });
+  let showLabels = true;
+  $('lblBtn').onclick = () => { showLabels = !showLabels; $('lblBtn').setAttribute('aria-pressed', showLabels); };
+
+  api.setMode = mode => {
+    const sim = mode === 'practice';
+    aem.visible = sim; sense.visible = sim;
+    LBL.find(l => l.id === 'aem').hidden = !sim;
+    LBL.find(l => l.id === 'noaem').hidden = sim;
+    screenDirty = true;
+  };
+  api.busy = () => {};
+
+  /* ---- camera presets ---- */
+  let tween = null;
+  const go = (pos, tgt) => { tween = { t: 0, p0: camera.position.clone(), p1: pos, q0: controls.target.clone(), q1: tgt }; };
+  $('viewChip').onclick = () => go(new THREE.Vector3(30, 58, 70), new THREE.Vector3(-6, 0, 2));
+  $('viewAll').onclick = () => go(new THREE.Vector3(-10, 210, 260), new THREE.Vector3(-60, 0, 0));
+
+  /* ---- hover picking ---- */
+  const ray = new THREE.Raycaster(), mouse = new THREE.Vector2(), tip = $('tip');
+  let hoverXY = null;
+  canvas.addEventListener('pointermove', e => { const r = canvas.getBoundingClientRect(); hoverXY = [e.clientX - r.left, e.clientY - r.top]; mouse.set(hoverXY[0] / r.width * 2 - 1, -hoverXY[1] / r.height * 2 + 1); });
+  canvas.addEventListener('pointerleave', () => { hoverXY = null; tip.hidden = true; });
+  function pick() {
+    if (!hoverXY) return;
+    ray.setFromCamera(mouse, camera);
+    const hit = ray.intersectObjects(pickables, false).find(h => h.object.visible !== false && (h.object !== aemBox || aem.visible));
+    if (!hit) { tip.hidden = true; canvas.style.cursor = ''; return; }
+    const inf = hit.object.userData.info;
+    tip.innerHTML = `<b>${inf.title}</b>${inf.body}${inf.code ? `<br><code>${inf.code}</code>` : ''}`;
+    tip.hidden = false; canvas.style.cursor = 'help';
+    const r = stage.getBoundingClientRect();
+    const tw = tip.offsetWidth, th = tip.offsetHeight;
+    tip.style.left = Math.min(hoverXY[0] + 16, r.width - tw - 8) + 'px';
+    tip.style.top = Math.min(hoverXY[1] + 16, r.height - th - 8) + 'px';
+  }
+
+  /* ---- resize ---- */
+  const resize = () => { const w = stage.clientWidth, h = stage.clientHeight; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); };
+  new ResizeObserver(resize).observe(stage); resize();
+
+  /* ---- frame loop ---- */
+  const clock = new THREE.Clock();
+  let advClock = 0, frame = 0;
+  const LED_COL = { off: 0x000000, flash: 0x2f7dff, white: 0xffffff, green: 0x3ddc84, blue: 0x2f7dff };
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  function tick() {
+    const dt = Math.min(clock.getDelta(), 0.1), st = api.state, simDt = dt * S.speed;
+    frame++;
+    if (tween) {
+      tween.t = Math.min(1, tween.t + dt / 0.9); const k = 1 - Math.pow(1 - tween.t, 3);
+      camera.position.lerpVectors(tween.p0, tween.p1, k); controls.target.lerpVectors(tween.q0, tween.q1, k);
+      if (tween.t >= 1) tween = null;
+    }
+    controls.update();
+
+    // what the chip is "doing"
+    let target = st.glowTarget, ledKey = st.led, ledI = 0;
+    if (st.mode) {
+      const mean = profileFor(MODE_INFO[st.mode].fw)[0];
+      target = Math.min(1, Math.max(0.06, (Math.log10(mean) + 3.5) / 4));
+      if (st.mode === 'ps4_active') { ledKey = 'green'; ledI = 1; }
+      if (st.mode === 'ps1_sleep') { ledKey = 'off'; target *= 0.9 + 0.1 * Math.sin(performance.now() / 900); }
+      if (st.mode === 'ble_adv') {
+        advClock += simDt;
+        if (advClock >= 1) { advClock -= 1; spawnWave(); st.advFlash = 1; }
+        if (st.advFlash > 0) { ledKey = 'blue'; ledI = st.advFlash; target = Math.min(1, target + 0.35 * st.advFlash); st.advFlash = Math.max(0, st.advFlash - dt * 4); }
+      }
+    } else advClock = 0;
+    if (st.flash != null) { ledKey = 'flash'; ledI = 0.5 + 0.5 * Math.sin(performance.now() / 90); target = 0.25; }
+    if (st.resetFlash > 0) { ledKey = 'white'; ledI = st.resetFlash; st.resetFlash = Math.max(0, st.resetFlash - dt * 3); target = 0; }
+    st.glow += (target - st.glow) * Math.min(1, dt * 5);
+    glow.material.opacity = st.glow * 0.9;
+    glow.scale.setScalar(10 + st.glow * 18);
+    socLight.intensity = st.glow * 160;
+    const lc = LED_COL[ledKey] ?? 0;
+    B.ledMat.emissive.setHex(lc); B.ledMat.emissiveIntensity = 2.5 * ledI;
+    ledGlow.material.color.setHex(lc || 0x000000); ledGlow.material.opacity = lc ? ledI * 0.9 : 0;
+    ledLight.color.setHex(lc || 0x000000); ledLight.intensity = lc ? ledI * 40 : 0;
+    setRing(st.flash);
+
+    // AEM box breathes while sampling
+    aemEdges.material.opacity = st.sampling ? 0.55 + 0.4 * Math.sin(performance.now() / 120) : 0.35;
+    sense.material.opacity = st.sampling ? 1 : 0.45;
+    sense.material.color.setHex(st.sampling ? 0xf0a43a : 0x5cc8e8);
+
+    // packets
+    for (let i = pk.length - 1; i >= 0; i--) {
+      const m = pk[i], u = m.userData;
+      u.t += dt * u.v;
+      if (u.t > 1) { scene.remove(m); pk.splice(i, 1); continue; }
+      m.visible = u.t >= 0;
+      if (u.t >= 0) { const pt = curve.getPointAt(u.dir === 'down' ? u.t : 1 - u.t); m.position.copy(pt).y += 1.6; }
+    }
+    // radio rings
+    for (let i = waves.length - 1; i >= 0; i--) {
+      const m = waves[i], u = m.userData; u.age += dt;
+      if (u.age < 0) continue;
+      m.visible = !reduce;
+      const s = 3 + u.age * 38; m.scale.set(s, s, s); m.material.opacity = Math.max(0, 0.9 - u.age * 1.2);
+      if (u.age > 0.8) { scene.remove(m); m.material.dispose(); waves.splice(i, 1); }
+    }
+    // the "no AEM" label pulses after the capability test fails
+    if (st.noAemAlert > 0) st.noAemAlert = Math.max(0, st.noAemAlert - dt * 0.4);
+
+    if (screenDirty && frame % 6 === 0) { drawScreen(); scrTex.needsUpdate = true; screenDirty = false; }
+
+    renderer.render(scene, camera);
+
+    // labels
+    const w = stage.clientWidth, h = stage.clientHeight, v = new THREE.Vector3();
+    const camDist = camera.position.distanceTo(controls.target);
+    for (const l of LBL) {
+      v.copy(l.p).project(camera);
+      const vis = showLabels && !l.hidden && v.z < 1 && Math.abs(v.x) < 1.05 && Math.abs(v.y) < 1.05 && (l.far ? camDist > 120 : camDist < 260);
+      l.el.style.display = vis ? '' : 'none';
+      if (vis) { l.el.style.left = ((v.x + 1) / 2 * w) + 'px'; l.el.style.top = ((1 - v.y) / 2 * h) + 'px'; }
+      if (l.id === 'noaem') l.el.style.opacity = st.noAemAlert > 0 ? String(0.55 + 0.45 * Math.abs(Math.sin(performance.now() / 160))) : '1';
+    }
+    if (frame % 3 === 0) pick();
+    requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+  return api;
+}
+
+/* =====================================================================
+   7.  Wiring
+   ===================================================================== */
+$('startBtn').onclick = () => { runSession(); };
+$('stopBtn').onclick = () => { S.stop = true; $('stopBtn').disabled = true; };
+$('speed').onchange = e => { S.speed = parseFloat(e.target.value); };
+$('modePractice').onclick = () => { if (!S.running) loadRest('practice'); };
+$('modeReal').onclick = () => { if (!S.running) loadRest('real'); };
+document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => {
+  document.querySelectorAll('.tabs button').forEach(x => x.setAttribute('aria-selected', x === b));
+  $('tab-run').hidden = b.dataset.tab !== 'run'; $('tab-cfg').hidden = b.dataset.tab !== 'cfg';
+  if (b.dataset.tab === 'run') trace.draw();
+});
+let rz; window.addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(() => { drawBars(); renderVerdicts(); trace.draw(); }, 120); });
+document.fonts?.ready?.then(() => { drawBars(); renderVerdicts(); trace.draw(); });
+
+loadRest('practice');
+</script>
