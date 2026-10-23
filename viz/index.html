@@ -218,6 +218,16 @@ code, pre, .mono { font-family: var(--f-mono); }
 .files .empty { color: var(--muted); font-family: var(--f-body); }
 .manifest { margin: 0; max-height: 300px; overflow: auto; font-size: 11px; background: #0a0d10; border: 1px solid var(--line); border-radius: 5px; padding: 10px; color: #aab5bf; white-space: pre; }
 
+.seg button[aria-pressed="true"][data-level="2"] small { color: var(--cyan); }
+.l2grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: 12px; }
+#perChart { display: block; width: 100%; height: 300px; }
+.tablewrap { overflow-x: auto; }
+.ptable { width: 100%; border-collapse: collapse; font-family: var(--f-mono); font-size: 12px; font-variant-numeric: tabular-nums; }
+.ptable th { text-align: right; font-weight: 500; color: var(--muted); font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em; padding: 4px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.ptable td { text-align: right; padding: 4px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.ptable tr.cross td { color: var(--accent); }
+.design { color: var(--cyan); font-style: italic; }
+
 @media (max-width: 1180px) {
   .res-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .res-grid .chart { grid-column: 1 / -1; }
@@ -226,6 +236,7 @@ code, pre, .mono { font-family: var(--f-mono); }
   .bench { grid-template-columns: minmax(0, 1fr); }
   .side { height: 560px; }
   .res-grid2 { grid-template-columns: minmax(0, 1fr); }
+  .l2grid { grid-template-columns: minmax(0, 1fr); }
 }
 @media (max-width: 720px) {
   .res-grid { grid-template-columns: minmax(0, 1fr); }
@@ -246,6 +257,10 @@ code, pre, .mono { font-family: var(--f-mono); }
   <div class="seg" id="modeSeg" role="group" aria-label="Bench mode">
     <button type="button" id="modePractice" data-mode="practice" aria-pressed="true">Practice<small>fake_commander.py</small></button>
     <button type="button" id="modeReal" data-mode="real" aria-pressed="false">Real bench<small>DK2605A · no AEM</small></button>
+  </div>
+  <div class="seg" id="levelSeg" role="group" aria-label="Harness level">
+    <button type="button" id="lvl1" data-level="1" aria-pressed="true">Level 1<small>power</small></button>
+    <button type="button" id="lvl2" data-level="2" aria-pressed="false">Level 2<small>RF link · design</small></button>
   </div>
   <div class="runctl">
     <label class="speed" for="speed">Speed
@@ -294,7 +309,7 @@ code, pre, .mono { font-family: var(--f-mono); }
         <div class="bar"><i id="prog"></i></div>
       </div>
       <div class="trace">
-        <div class="trace-h"><span>aem dump · <b id="traceMode">no samples yet</b></span><span id="traceStat"></span></div>
+        <div class="trace-h"><span><span id="traceKind">aem dump</span> · <b id="traceMode">no samples yet</b></span><span id="traceStat"></span></div>
         <canvas id="trace"></canvas>
       </div>
       <pre class="term" id="term" aria-live="off"></pre>
@@ -311,6 +326,7 @@ code, pre, .mono { font-family: var(--f-mono); }
     <p id="resSource"></p>
     <span class="pytest" id="pytestLine"></span>
   </div>
+  <div id="l1res">
   <div class="res-grid">
     <div class="card vc" id="vc-ps4_active"></div>
     <div class="card vc" id="vc-ps1_sleep"></div>
@@ -320,6 +336,18 @@ code, pre, .mono { font-family: var(--f-mono); }
       <canvas id="bars"></canvas>
       <p class="note">Log scale. Error bars are the uncertainty the verdict used: the larger of the standard error and the AEM's own resolution. Dashed ticks are the limits from config.yaml.</p>
     </div>
+  </div>
+  </div>
+  <div id="l2res" hidden>
+    <div class="l2grid">
+      <div class="card vc" id="vc-sens"></div>
+      <div class="card">
+        <h3>per_vs_rx_power.png</h3>
+        <canvas id="perChart"></canvas>
+        <p class="note">Faint dots: one level of one sweep. White line: mean over sweeps. Sensitivity is where PER crosses 30.8 %, the BLE spec's definition. Amber band: sensitivity ± the uncertainty the verdict used. Red dashed line: the limit.</p>
+      </div>
+    </div>
+    <div class="card" style="margin-top:12px"><h3>per_summary.json, by level</h3><div class="tablewrap" id="perTable"></div></div>
   </div>
   <div class="res-grid2">
     <div class="card">
@@ -371,7 +399,16 @@ const DEFAULT_CFG = {
     limits_mA: { ps4_active: 5.0, ps1_sleep: 0.010, ble_adv: 0.100 },
     instrument_floor_mA: { ps4_active: 0.100, ps1_sleep: 0.001, ble_adv: 0.001 },
   },
+  // Level 2 — PROPOSED settings for the designed test_05_per_sweep.py. Not in config.yaml yet.
+  level2: {
+    channel: 19, phy: '1M', packets: 1500, path_loss_db: 104,
+    tx_min_dbm: -6, tx_max_dbm: 14, tx_step_db: 2, repeats: 3,
+    per_threshold: 0.308, sensitivity_limit_dbm: -94, path_loss_floor_db: 1.0,
+  },
 };
+const L2FW = 'firmware/ble_dtm.rps';
+// Illustrative receiver waterfall used ONLY by this page: 50 % PER at -97.6 dBm. Not a datasheet curve.
+const RX_MODEL = { p50: -97.6, slope: 0.85 };
 const STUB_SHA = '4097889236a2af26c293033feb964c4cf118c0224e0d063fec0a89e9d0569ef2'; // sha256(b"placeholder")
 const HEAD = 'b0f388c368e7994a08b5f989e12abc881cb9677c';
 
@@ -402,12 +439,12 @@ Serial Number   : 242501125
 Target Device   : SiWG917M111MGTBA
 
 DONE`;
-const FAKE_PROBE = `Kit Information:
+const fakeProbe = serial => `Kit Information:
 =======================================
 Kit Name        : SiWx917 Wi-Fi 6 and Bluetooth LE Pro Kit (FAKE)
 Kit Part Number : SiWx917-PK6031A
 Radio Board     : BRD4338A
-J-Link Serial   : ${SERIAL}
+J-Link Serial   : ${serial}
 Debug Mode      : MCU
 AEM Supported   : 1
 VCOM Supported  : 1
@@ -445,18 +482,32 @@ function summarize(values) {
   return { n, mean, std, sem: n > 1 ? std / Math.sqrt(n) : 0, min: mn, max: mx };
 }
 const g = (x, p = 6) => { if (x === 0) return '0'; const s = Number(x.toPrecision(p)); return Math.abs(s) < 1e-4 ? s.toExponential().replace(/\.?0+e/, 'e') : String(s); };
-function judge(s, limit, floor) {
+function judge(s, limit, floor, unit = 'mA', floorName = 'instrument floor') {
+  const du = unit === 'dBm' ? 'dB' : unit;
   const u = Math.max(s.sem, floor);
-  const source = floor >= s.sem ? 'instrument floor' : 'standard error of the mean';
+  const source = floor >= s.sem ? floorName : 'standard error of the mean';
   const lo = s.mean - u, hi = s.mean + u;
   let verdict, reason;
-  if (hi < limit) { verdict = 'PASS'; reason = `mean ${g(s.mean)} mA + ${g(u, 3)} mA (${source}) is still below the ${g(limit)} mA limit`; }
-  else if (lo > limit) { verdict = 'FAIL'; reason = `mean ${g(s.mean)} mA - ${g(u, 3)} mA (${source}) is still above the ${g(limit)} mA limit`; }
-  else { verdict = 'INCONCLUSIVE'; reason = `the ${g(limit)} mA limit falls inside ${g(s.mean)} ± ${g(u, 3)} mA (${source}), so this run cannot tell pass from fail`; }
+  if (hi < limit) { verdict = 'PASS'; reason = `mean ${g(s.mean)} ${unit} + ${g(u, 3)} ${du} (${source}) is still below the ${g(limit)} ${unit} limit`; }
+  else if (lo > limit) { verdict = 'FAIL'; reason = `mean ${g(s.mean)} ${unit} - ${g(u, 3)} ${du} (${source}) is still above the ${g(limit)} ${unit} limit`; }
+  else { verdict = 'INCONCLUSIVE'; reason = `the ${g(limit)} ${unit} limit falls inside ${g(s.mean)} ± ${g(u, 3)} ${du} (${source}), so this run cannot tell pass from fail`; }
   return { verdict, mean: s.mean, limit, uncertainty: u, uncertainty_source: source, instrument_floor: floor, reason };
 }
 function gauss(mean, std) { let u = 0, v = 0; while (u === 0) u = Math.random(); while (v === 0) v = Math.random(); return mean + std * Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); }
 const fmtI = mA => mA >= 1 ? `${mA.toFixed(3)} mA` : `${(mA * 1000).toFixed(mA < 0.01 ? 2 : 1)} µA`;
+const fmtDbm = v => `${v > 0 ? '+' : ''}${Number.isInteger(+v) ? v : (+v).toFixed(1)} dBm`;
+function perModel(rx, shift = 0) { return 1 / (1 + Math.exp((rx - (RX_MODEL.p50 + shift)) / RX_MODEL.slope)); }
+function receivedCount(n, per) { return Math.round(Math.min(n, Math.max(0, gauss(n * (1 - per), Math.sqrt(n * per * (1 - per)))))); }
+function rxLevels() { const c = S.cfg.level2, out = []; for (let t = c.tx_min_dbm; t <= c.tx_max_dbm + 1e-9 && out.length < 60; t += c.tx_step_db) out.push({ tx: +t.toFixed(2), rx: +(t - c.path_loss_db).toFixed(2) }); return out; }
+/* sensitivity = the RX level where PER first drops through the threshold, linearly interpolated */
+function sensitivityOf(pts, thr) { for (let i = 0; i < pts.length - 1; i++) { const a = pts[i], b = pts[i + 1]; if (a.per >= thr && b.per < thr) return a.rx + (a.per - thr) / (a.per - b.per) * (b.rx - a.rx); } return null; }
+function simulateRun(shift) { const c = S.cfg.level2; return rxLevels().map(l => { const p = perModel(l.rx, shift), recv = receivedCount(c.packets, p); return { ...l, sent: c.packets, recv, per: 1 - recv / c.packets }; }); }
+function finishL2(runs) {
+  const c = S.cfg.level2, sens = runs.map(r => sensitivityOf(r, c.per_threshold));
+  if (sens.some(v => v == null)) throw new Error('ValueError: a sweep never crossed 30.8 % PER; widen tx_min_dbm..tx_max_dbm or change path_loss_db');
+  const summary = summarize(sens);
+  return { runs, sens, summary, verdict: judge(summary, c.sensitivity_limit_dbm, c.path_loss_floor_db, 'dBm', 'path-loss calibration') };
+}
 const fmtU = mA => mA >= 0.1 ? `${mA.toFixed(3)} mA` : `${(mA * 1000).toPrecision(2)} µA`;
 
 /* =====================================================================
@@ -464,7 +515,7 @@ const fmtU = mA => mA >= 0.1 ? `${mA.toFixed(3)} mA` : `${(mA * 1000).toPrecisio
    ===================================================================== */
 const $ = id => document.getElementById(id);
 const S = {
-  mode: 'practice', running: false, stop: false, speed: 4,
+  mode: 'practice', level: 1, l2: null, l2live: null, running: false, stop: false, speed: 4,
   cfg: structuredClone(DEFAULT_CFG),
   summary: {}, runMeans: {}, tests: [], files: [], manifest: null, ts: '', source: '',
   modeLive: {}, // per-mode card status while running
@@ -519,6 +570,14 @@ const STEP = {
   plot:    { label: 'bar chart', ref: 'tests/test_02_power.py:92  test_99_make_plot()' },
   logic:   { label: 'pure logic', ref: '' },
   manifest:{ label: 'write manifest', ref: 'tests/conftest.py  session_manifest()' },
+  probe2:  { label: 'probe peer', ref: 'design: peer fixture → Device(serial=boards.peer.serial)' },
+  flash2:  { label: 'rps load → peer', ref: 'dvharness/device.py:122  Device.flash()  on the peer' },
+  reset2:  { label: 'reset peer', ref: 'dvharness/device.py:135  Device.reset()  on the peer' },
+  rxstart: { label: 'peer: RX test', ref: 'design: Device.dtm_rx_start()  (VCOM, not written)' },
+  txburst: { label: 'DUT: TX packets', ref: 'design: Device.dtm_tx()  (VCOM, not written)' },
+  testend: { label: 'Test_End → count', ref: 'design: Device.dtm_end()  (VCOM, not written)' },
+  per:     { label: 'PER = 1 − rx/sent', ref: 'design: test_05_per_sweep.py' },
+  sens:    { label: '30.8 % crossing', ref: 'design: sensitivity_of()  (not written)' },
 };
 let curSteps = [];
 function setSteps(keys) {
@@ -536,12 +595,13 @@ function hud(main, sub) { $('hudStep').textContent = main; if (sub !== undefined
 
 /* ---------------- device.py, simulated ---------------- */
 function cmdPrefix() { return S.mode === 'practice' ? FAKE_COMMANDER : `"${REAL_COMMANDER}"`; }
-async function commander(args, outText, secs, { withSerial = true, upPackets = 2 } = {}) {
-  log(`$ ${cmdPrefix()} ${args.join(' ')}${withSerial ? ' --serialno ' + SERIAL : ''}`, 'c');
-  bench.packets('down', 3);
+async function commander(args, outText, secs, { withSerial = true, upPackets = 2, serial = SERIAL } = {}) {
+  const peer = serial === PEER_SERIAL;
+  log(`$ ${cmdPrefix()} ${args.join(' ')}${withSerial ? ' --serialno ' + serial : ''}`, 'c');
+  bench.packets('down', 3, peer);
   await simSleep(secs, p => bench.busy(p));
   if (outText) outText.split('\n').forEach(l => log(l, 'o'));
-  bench.packets('up', upPackets);
+  bench.packets('up', upPackets, peer);
   return outText;
 }
 const Device = {
@@ -550,8 +610,8 @@ const Device = {
     await commander(['--version'], out, 0.4, { withSerial: false });
     return out.split('\n')[0];
   },
-  async probe() {
-    const out = await commander(['adapter', 'probe'], S.mode === 'practice' ? FAKE_PROBE : REAL_PROBE, 0.6);
+  async probe(serial = SERIAL) {
+    const out = await commander(['adapter', 'probe'], S.mode === 'practice' ? fakeProbe(serial) : REAL_PROBE, 0.6, { serial });
     const info = {};
     for (const line of out.split('\n')) {
       const m = line.match(/^\s*([A-Za-z][A-Za-z0-9 .\-/]*?)\s*:\s*(.+?)\s*$/);
@@ -560,20 +620,21 @@ const Device = {
     return info;
   },
   async hasAem() { const yes = ((await this.probe())['AEM Supported'] || '').trim().toLowerCase(); return yes === '1' || yes === 'true'; },
-  async flash(fw) {
-    log(`$ ${cmdPrefix()} rps load ${fw} --serialno ${SERIAL}`, 'c');
-    bench.packets('down', 8);
-    bench.state.led = 'flash';
+  async flash(fw, serial = SERIAL) {
+    const peer = serial === PEER_SERIAL;
+    log(`$ ${cmdPrefix()} rps load ${fw} --serialno ${serial}`, 'c');
+    bench.packets('down', 8, peer);
+    if (!peer) bench.state.led = 'flash';
     log(`Parsing RPS file ${fw}...`, 'o'); log('RPS header OK, image type M4, 65536 bytes', 'o'); log('Erasing flash...', 'o');
-    await simSleep(1.4, p => { bench.state.flash = p; if (p > .35 && Math.random() < .2) bench.packets('down', 1); });
+    await simSleep(1.4, p => { if (peer) bench.state.peerFlash = p; else bench.state.flash = p; if (p > .35 && Math.random() < .2) bench.packets('down', 1, peer); });
     log('Writing image to flash...', 'o'); log('DONE', 'o');
-    bench.state.flash = null; bench.state.led = 'off';
-    bench.packets('up', 1);
-    S.firmwareNow = fw;
+    if (peer) bench.state.peerFlash = null; else { bench.state.flash = null; bench.state.led = 'off'; }
+    bench.packets('up', 1, peer);
+    if (!peer) S.firmwareNow = fw;
   },
-  async reset() {
-    bench.state.resetFlash = 1; bench.state.glowTarget = 0;
-    await commander(['device', 'reset'], 'Resetting...\nDONE', 0.35);
+  async reset(serial = SERIAL) {
+    if (serial === SERIAL) { bench.state.resetFlash = 1; bench.state.glowTarget = 0; } else bench.state.peerRx = 1;
+    await commander(['device', 'reset'], 'Resetting...\nDONE', 0.35, { serial });
   },
   async dumpCurrent(dur, rate, outfile, mode) {
     log(`$ ${cmdPrefix()} aem dump --outfile ${outfile} --duration ${dur} --datarate ${rate} --serialno ${SERIAL}`, 'c');
@@ -669,6 +730,134 @@ function buildTests() {
   return T.map(t => ({ ...t, status: 'pending', msg: '' }));
 }
 
+/* BLE Direct Test Mode runs over each kit's virtual COM port, not through Commander */
+async function vcom(board, cmd, reply, secs) {
+  const peer = board === 'peer';
+  log(`[VCOM ${board}] > ${cmd}`, 'c');
+  bench.packets('down', 1, peer);
+  await simSleep(secs);
+  log(`[VCOM ${board}] < ${reply}`, 'o');
+  bench.packets('up', 1, peer);
+}
+function stubL2() {
+  if (S.flashed.ble_dtm) return;
+  S.flashed.ble_dtm = L2FW;
+  log(`# firmware.py: practice mode → ${L2FW} missing, wrote stub b"placeholder" (never reaches real silicon)`, 'n');
+}
+
+function buildTestsL2() {
+  const F = 'test_05_per_sweep.py', T = [];
+  T.push({ file: F, name: 'test_both_kits_answer', run: async () => {
+    setSteps(['probe', 'probe2']); stepOn('probe');
+    hud('Are both kits on USB?', `DUT ${SERIAL} and peer ${PEER_SERIAL} must both answer`);
+    const a = await Device.probe();
+    if (a['J-Link Serial'] !== SERIAL) return ['failed', 'DUT serial mismatch'];
+    stepOn('probe2');
+    if (S.mode === 'real') {
+      log(`$ ${cmdPrefix()} adapter probe --serialno ${PEER_SERIAL}`, 'c');
+      bench.packets('down', 2);
+      await simSleep(0.8);
+      log(`ERROR: no adapter with serial number ${PEER_SERIAL} is connected`, 'F');
+      log('# wording simulated; device.py raises CommanderError with the full output, as for any failed command', 'n');
+      bench.state.peerAlert = 1;
+      return ['failed', `CommanderError: Command failed: … adapter probe --serialno ${PEER_SERIAL} (peer kit not on USB)`];
+    }
+    const b = await Device.probe(PEER_SERIAL);
+    return b['J-Link Serial'] === PEER_SERIAL ? ['passed', `${SERIAL} and ${PEER_SERIAL} both answered`] : ['failed', 'peer serial mismatch'];
+  } });
+  T.push({ file: F, name: 'test_dtm_image_on_both_kits', run: async () => {
+    setSteps(['image', 'flash', 'flash2']); stepOn('image');
+    hud('Load the Direct Test Mode image on both kits', `The same ${L2FW} goes on the DUT and on the peer`);
+    await simSleep(0.3);
+    if (S.mode === 'real') {
+      log(`# firmware.py: ${L2FW} was never built and commander is real hardware → refuse to invent it`, 'n');
+      return ['failed', `FileNotFoundError: Firmware image for mode 'ble_dtm' is missing: ${L2FW}`];
+    }
+    stubL2();
+    stepOn('flash'); await Device.flash(L2FW);
+    stepOn('flash2'); await Device.flash(L2FW, PEER_SERIAL);
+    return ['passed', 'rps load printed DONE on both kits'];
+  } });
+  T.push({ file: F, name: 'test_per_sweep', run: perSweep });
+  T.push({ file: F, name: 'test_sensitivity_meets_limit', run: async () => {
+    setSteps(['sens', 'judge']); stepOn('judge', 'dvharness/stats.py:86  judge()  (same rule as Level 1)');
+    hud('Judging sensitivity', 'Same PASS / FAIL / INCONCLUSIVE rule as the power tests; the floor is the path-loss calibration');
+    await simSleep(0.4);
+    if (!S.l2) return ['skipped', S.mode === 'real' ? `peer board ${PEER_SERIAL} not connected` : 'no sweep to judge'];
+    const v = S.l2.verdict;
+    log(`[sensitivity] ${v.verdict}: ${v.reason}`, v.verdict === 'PASS' ? 'P' : v.verdict === 'FAIL' ? 'F' : 'I');
+    if (v.verdict === 'PASS') return ['passed', `${S.l2.summary.mean.toFixed(1)} dBm ± ${g(v.uncertainty, 3)} dB → PASS`];
+    return ['failed', `${v.verdict}: ${v.reason}`];
+  } });
+  T.push({ file: F, name: 'test_99_make_per_plot', run: async () => {
+    setSteps(['plot']); stepOn('plot', 'design: test_05_per_sweep.py  test_99_make_per_plot()');
+    hud('Plotting per_vs_rx_power.png', 'Skips when there is no summary, the fix the README names for test_99_make_plot');
+    await simSleep(0.4);
+    if (!S.l2) return ['skipped', 'per_summary.json absent, so the plot skips instead of failing'];
+    addFile('per_vs_rx_power.png', 'PER curve'); renderL2();
+    return ['passed', 'per_vs_rx_power.png written'];
+  } });
+  [
+    ['test_per_is_lost_over_sent', 'PER = 1 − received / sent: 1500 sent, 1423 received → 5.13 %'],
+    ['test_sensitivity_interpolates_the_30_8_percent_crossing', 'linear interpolation between the two levels that straddle 30.8 %'],
+    ['test_a_sweep_that_never_crosses_raises', 'a curve that never reaches 30.8 % is an error, not a number'],
+    ['test_floor_is_the_path_loss_calibration', 'u = max(sem, path_loss_floor_db), with the same judge() as Level 1'],
+  ].forEach(([n, note]) => T.push(pure(F, n, note, `design: tests/${F}`)));
+  return T.map(t => ({ ...t, status: 'pending', msg: '' }));
+}
+
+async function perSweep() {
+  const c = S.cfg.level2, lv = rxLevels();
+  if (S.mode === 'real') { setSteps(['probe2']); stepOn('probe2'); await simSleep(0.2); return ['skipped', `peer board ${PEER_SERIAL} not connected`]; }
+  if (lv.length < 2) return ['failed', 'the TX sweep needs at least two levels'];
+  setSteps(['flash', 'flash2', 'reset', 'reset2', 'rxstart', 'txburst', 'testend', 'per', 'sens']);
+  const runs = [];
+  S.l2live = { runs, cur: null }; renderL2();
+  for (let r = 0; r < c.repeats; r++) {
+    $('runCount').textContent = `sweep ${r + 1}/${c.repeats}`;
+    stepOn('flash'); hud(`Sweep ${r + 1}/${c.repeats}: fresh flash on both kits`, 'Every sweep starts from flash → reset, so the sweeps are independent');
+    await Device.flash(L2FW);
+    stepOn('flash2'); await Device.flash(L2FW, PEER_SERIAL);
+    stepOn('reset'); await Device.reset();
+    stepOn('reset2'); await Device.reset(PEER_SERIAL);
+    const shift = gauss(0, 0.25), pts = [];
+    S.l2live.cur = pts;
+    $('traceMode').textContent = `sweep ${r + 1}/${c.repeats}`;
+    for (const l of lv) {
+      $('runCount').textContent = `sweep ${r + 1}/${c.repeats} · RX ${fmtDbm(l.rx)}`;
+      hud(`Sweep ${r + 1}/${c.repeats}: DUT at ${fmtDbm(l.tx)} → ${fmtDbm(l.rx)} at the peer`, `${c.packets} DTM packets on channel ${c.channel} through ${c.path_loss_db} dB of path loss`);
+      stepOn('rxstart');
+      await vcom('peer', `HCI_LE_Receiver_Test(channel=${c.channel}, phy=${c.phy})`, 'Command_Complete status=0x00', 0.12);
+      stepOn('txburst');
+      await vcom('dut', `HCI_LE_Transmitter_Test(channel=${c.channel}, length=37, payload=PRBS9, phy=${c.phy}, tx_power=${l.tx} dBm)`, 'Command_Complete status=0x00', 0.08);
+      const per = perModel(l.rx, shift);
+      bench.state.link = { per };
+      try { await simSleep(c.packets * 0.000625); } finally { bench.state.link = null; }
+      await vcom('dut', 'HCI_LE_Test_End', 'Command_Complete status=0x00', 0.05);
+      stepOn('testend');
+      const recv = receivedCount(c.packets, per);
+      await vcom('peer', 'HCI_LE_Test_End', `Command_Complete status=0x00 num_packets=${recv}`, 0.08);
+      stepOn('per');
+      pts.push({ ...l, sent: c.packets, recv, per: 1 - recv / c.packets });
+      log(`# ${fmtDbm(l.rx)}: ${recv}/${c.packets} received → PER ${((1 - recv / c.packets) * 100).toFixed(1)} %`, 'n');
+      trace.draw();
+    }
+    stepOn('sens');
+    const sv = sensitivityOf(pts, c.per_threshold);
+    runs.push(pts); S.l2live.cur = null;
+    addFile(`per_run${r}.csv`, `${pts.length} levels`);
+    log(`# sweep ${r}: PER crosses 30.8 % at ${sv == null ? 'no level (never crossed)' : sv.toFixed(2) + ' dBm'}`, 'n');
+    renderL2(); trace.draw();
+    await simSleep(0.2);
+  }
+  try { S.l2 = finishL2(runs); } catch (e) { return ['failed', e.message]; }
+  S.l2live = null;
+  addFile('per_summary.json', `${runs.length} sweeps`, true);
+  renderL2();
+  log(`[per] sensitivity n=${S.l2.summary.n}  mean=${S.l2.summary.mean.toFixed(2)} dBm  std=${S.l2.summary.std.toFixed(2)} dB  sem=${S.l2.summary.sem.toFixed(2)} dB`, 'o');
+  return ['passed', `${runs.length} sweeps × ${lv.length} levels, sensitivity ${S.l2.summary.mean.toFixed(2)} dBm`];
+}
+
 function stubImage(mode) {
   if (S.stubbed?.[mode]) return;
   S.stubbed = { ...(S.stubbed || {}), [mode]: true };
@@ -743,15 +932,17 @@ async function runSession() {
   readCfgForm();
   S.running = true; S.stop = false;
   S.summary = {}; S.runMeans = {}; S.files = []; S.flashed = {}; S.stubbed = {}; S.modeLive = {};
-  MODES.forEach(m => S.modeLive[m] = S.mode === 'practice' ? 'WAIT' : 'WAIT');
+  if (S.level === 1) MODES.forEach(m => S.modeLive[m] = 'WAIT');
+  S.l2 = null; S.l2live = null;
   S.ts = stamp(); S.source = 'live'; S.manifest = null;
-  S.tests = buildTests();
+  S.tests = S.level === 2 ? buildTestsL2() : buildTests();
+  bench.setAtt(S.cfg.level2.path_loss_db);
   setRunning(true);
   term.textContent = ''; screenLines.length = 0;
   trace.clear();
   renderAll();
   const t0 = performance.now();
-  log(`$ python3 -m pytest    # ${S.mode === 'practice' ? 'practice mode: config.yaml commander = fake_commander.py' : 'real bench: DK2605A on USB'}`, 't');
+  log(`$ python3 -m pytest${S.level === 2 ? ' tests/test_05_per_sweep.py' : ''}    # ${S.level === 2 ? 'Level 2 design · ' : ''}${S.mode === 'practice' ? 'practice mode: config.yaml commander = fake_commander.py' : 'real bench: DK2605A on USB'}`, 't');
   log(`# conftest.py: results_dir → results/${S.ts}/`, 'n');
   let version = null;
   try {
@@ -786,7 +977,8 @@ async function runSession() {
     const secs = ((performance.now() - t0) / 1000 * S.speed).toFixed(2);
     S.pytestTail = `in ${secs}s (simulated)`;
     log(`= ${pytestCounts()} ${S.pytestTail} =`, S.tests.some(t => t.status === 'failed') ? 'F' : 'P');
-    hud(S.mode === 'practice' ? 'Run complete' : 'Run complete — device control proven, no power numbers', S.mode === 'practice' ? 'Every number above came from fake_commander.py' : 'AEM Supported: False, so the power tests skipped themselves');
+    if (S.level === 2) hud(S.mode === 'practice' ? 'Level 2 design run complete' : 'Stopped at the peer: kit 440654321 is not on USB', S.mode === 'practice' ? 'Every packet count came from the model in this page; nothing here is a measurement' : 'Level 2 needs the second kit, a coax with an attenuator, and firmware/ble_dtm.rps');
+    else hud(S.mode === 'practice' ? 'Run complete' : 'Run complete — device control proven, no power numbers', S.mode === 'practice' ? 'Every number above came from fake_commander.py' : 'AEM Supported: False, so the power tests skipped themselves');
   } catch (e) {
     if (!(e instanceof Stopped)) { console.error(e); log(String(e), 'F'); }
     const cur = S.tests.find(t => t.status === 'running');
@@ -797,7 +989,7 @@ async function runSession() {
     MODES.forEach(m => { if (S.modeLive[m] === 'RUN' || S.modeLive[m] === 'WAIT') S.modeLive[m] = null; });
     S.pytestTail = 'interrupted';
     hud('Stopped', 'The results folder keeps what was written so far; manifest.json shows ended_utc: null');
-    bench.state.flash = null; bench.state.sampling = false; bench.state.mode = null; bench.state.glowTarget = 0; bench.state.led = 'off';
+    bench.state.flash = null; bench.state.peerFlash = null; bench.state.link = null; bench.state.sampling = false; bench.state.mode = null; bench.state.glowTarget = 0; bench.state.led = 'off';
   } finally {
     S.running = false; S.stop = false;
     setRunning(false);
@@ -817,8 +1009,9 @@ function buildManifest(version, ended) {
     config_snapshot: {
       commander: S.mode === 'practice' ? FAKE_COMMANDER : REAL_COMMANDER,
       boards: { dut: { serial: SERIAL }, peer: { serial: PEER_SERIAL } },
-      firmware: Object.fromEntries(MODES.map(m => [m, MODE_INFO[m].fw])),
+      firmware: { ...Object.fromEntries(MODES.map(m => [m, MODE_INFO[m].fw])), ...(S.level === 2 ? { ble_dtm: L2FW } : {}) },
       power: structuredClone(S.cfg.power),
+      ...(S.level === 2 ? { level2_proposed: structuredClone(S.cfg.level2) } : {}),
     },
     firmware_flashed: fwf,
   };
@@ -904,7 +1097,7 @@ function setupCanvas(cv) {
 const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 
 /* one dot per independent run, the mean ± u band, and the limit */
-function drawStrip(mode, runs, mean, u, limit) {
+function drawStrip(mode, runs, mean, u, limit, fmt = fmtI) {
   const cv = $(`strip-${mode}`); if (!cv) return;
   const { ctx, w, h } = setupCanvas(cv);
   const lo0 = Math.min(mean - u * 1.6, ...runs), hi0 = Math.max(mean + u * 1.6, ...runs);
@@ -925,7 +1118,7 @@ function drawStrip(mode, runs, mean, u, limit) {
     ctx.strokeStyle = css('--fail'); ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.moveTo(X(limit), 4); ctx.lineTo(X(limit), 36); ctx.stroke(); ctx.setLineDash([]);
     ctx.fillStyle = css('--fail'); const lx = X(limit); ctx.textAlign = lx > w - 60 ? 'right' : 'left'; ctx.fillText('limit', lx + (lx > w - 60 ? -4 : 4), 34);
   } else {
-    ctx.textAlign = 'right'; ctx.fillText(`limit ${fmtI(limit)} →`, w - 8, 33);
+    ctx.textAlign = 'right'; ctx.fillText(`limit ${fmt(limit)} →`, w - 8, 33);
   }
   ctx.textAlign = 'left'; ctx.fillStyle = css('--muted'); ctx.fillText('mean ± u', 8, 33);
 }
@@ -982,6 +1175,14 @@ const trace = {
   start(mode, data, mean, std) { this.data = data; this.n = 0; this.mode = mode; this.mean = mean; this.std = std; $('traceMode').textContent = MODE_INFO[mode].title; this.draw(); },
   reveal(n) { this.n = n; if (!this.raf) this.raf = requestAnimationFrame(() => { this.raf = 0; this.draw(); }); },
   draw() {
+    if (S.level === 2) {
+      const runs = S.l2 ? S.l2.runs : S.l2live ? S.l2live.runs : [], cur = S.l2live?.cur;
+      drawPer($('trace'), runs, cur, false);
+      if (!S.running) $('traceMode').textContent = runs.length ? 'PER vs RX power' : 'no sweep yet';
+      const last = cur && cur.length ? cur[cur.length - 1] : null;
+      $('traceStat').textContent = last ? `${last.recv}/${last.sent} at ${fmtDbm(last.rx)}` : '';
+      return;
+    }
     const { ctx, w, h } = setupCanvas($('trace'));
     ctx.font = `10px ${css('--f-mono')}`;
     if (!this.data) { ctx.fillStyle = css('--muted'); ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(S.mode === 'real' ? 'No AEM on this kit, so no samples' : 'Samples stream here during each aem dump', w / 2, h / 2); return; }
@@ -1003,73 +1204,213 @@ const trace = {
   },
 };
 
+/* PER vs RX power: faint dots per sweep, mean line, live sweep in cyan */
+function drawPer(cv, runs, cur, big) {
+  const { ctx, w, h } = setupCanvas(cv);
+  const c = S.cfg.level2;
+  const lv = runs[0] && runs[0].length ? runs[0] : rxLevels();
+  ctx.font = `${big ? 11 : 10}px ${css('--f-mono')}`;
+  if (!runs.length && !(cur && cur.length)) {
+    ctx.fillStyle = css('--muted'); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(S.mode === 'real' ? 'No sweep: the peer kit is not connected' : big ? 'The PER curve appears as the first sweep runs.' : 'PER per level streams here during each sweep', w / 2, h / 2);
+    return;
+  }
+  const xmin = lv[0].rx - 1, xmax = lv[lv.length - 1].rx + 1;
+  const L = big ? 46 : 40, R = 8, T = big ? 12 : 6, B = big ? 34 : 15;
+  const X = v => L + (v - xmin) / (xmax - xmin) * (w - L - R), Y = p => T + (1 - p) * (h - T - B);
+  ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+  for (const p of (big ? [0, .25, .5, .75, 1] : [0, .5, 1])) {
+    ctx.strokeStyle = css('--line'); ctx.beginPath(); ctx.moveTo(L, Y(p)); ctx.lineTo(w - R, Y(p)); ctx.stroke();
+    ctx.fillStyle = css('--muted'); ctx.fillText(`${p * 100}%`, L - 5, Y(p));
+  }
+  ctx.textAlign = 'center'; ctx.textBaseline = 'top'; ctx.fillStyle = css('--muted');
+  const stepX = (xmax - xmin) > 24 ? 4 : 2;
+  if (big || true) for (let v = Math.ceil(xmin / stepX) * stepX; v <= xmax; v += stepX) if (big || v % 4 === 0) ctx.fillText(String(v), X(v), h - B + 4);
+  if (big) ctx.fillText('RX power at the peer (dBm)', (L + w - R) / 2, h - 15);
+  if (big && S.l2) {
+    const v = S.l2.verdict, m = S.l2.summary.mean;
+    ctx.fillStyle = 'rgba(240,164,58,.14)'; ctx.fillRect(X(m - v.uncertainty), T, X(m + v.uncertainty) - X(m - v.uncertainty), h - T - B);
+    ctx.fillStyle = css('--accent'); ctx.fillRect(X(m) - 1, T, 2, h - T - B);
+  }
+  if (big) {
+    const lim = c.sensitivity_limit_dbm;
+    if (lim >= xmin && lim <= xmax) {
+      ctx.strokeStyle = css('--fail'); ctx.setLineDash([4, 3]); ctx.beginPath(); ctx.moveTo(X(lim), T); ctx.lineTo(X(lim), h - B); ctx.stroke(); ctx.setLineDash([]);
+      ctx.fillStyle = css('--fail'); ctx.textAlign = 'left'; ctx.textBaseline = 'top'; ctx.fillText(`limit ${fmtDbm(lim)}`, X(lim) + 4, T);
+    }
+  }
+  ctx.strokeStyle = css('--accent'); ctx.setLineDash([4, 3]); ctx.beginPath(); ctx.moveTo(L, Y(c.per_threshold)); ctx.lineTo(w - R, Y(c.per_threshold)); ctx.stroke(); ctx.setLineDash([]);
+  ctx.fillStyle = css('--accent'); ctx.textAlign = 'right'; ctx.textBaseline = 'bottom'; ctx.fillText('30.8 %', w - R - 2, Y(c.per_threshold) - 2);
+  const dot = (x, y, r) => { ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill(); };
+  ctx.fillStyle = 'rgba(227,232,237,.38)';
+  runs.forEach(run => run.forEach(p => dot(X(p.rx), Y(p.per), big ? 2.6 : 1.8)));
+  if (runs.length) {
+    ctx.strokeStyle = css('--fg'); ctx.lineWidth = 1.6; ctx.beginPath();
+    runs[0].forEach((p, i) => { const m = runs.reduce((a, r) => a + (r[i] ? r[i].per : 0), 0) / runs.length; i ? ctx.lineTo(X(p.rx), Y(m)) : ctx.moveTo(X(p.rx), Y(m)); });
+    ctx.stroke(); ctx.lineWidth = 1;
+  }
+  if (cur && cur.length) {
+    ctx.strokeStyle = css('--cyan'); ctx.fillStyle = css('--cyan'); ctx.lineWidth = 1.4; ctx.beginPath();
+    cur.forEach((p, i) => i ? ctx.lineTo(X(p.rx), Y(p.per)) : ctx.moveTo(X(p.rx), Y(p.per)));
+    ctx.stroke(); ctx.lineWidth = 1;
+    cur.forEach(p => dot(X(p.rx), Y(p.per), big ? 3.2 : 2.4));
+  }
+}
+
+function renderL2() {
+  if (S.level !== 2) return;
+  const c = S.cfg.level2, R = S.l2, live = S.l2live, el = $('vc-sens');
+  const head = (pill, cls) => `<div class="vc-top"><div><div class="vc-mode">BLE 1M sensitivity</div><div class="vc-fw">${L2FW} · ch ${c.channel} · ${c.packets} packets per level</div></div><span class="pill ${cls}">${pill}</span></div>`;
+  if (R) {
+    const v = R.verdict, s = R.summary;
+    el.innerHTML = head(v.verdict, v.verdict) + `
+      <div class="vc-big">${s.mean.toFixed(1)} <small>dBm</small></div>
+      <div class="vc-unc">± ${g(v.uncertainty, 3)} dB (${v.uncertainty_source}) · limit ${fmtDbm(v.limit)}</div>
+      <canvas class="vc-strip" id="strip-sens"></canvas>
+      <div class="kv"><div><span>sweeps</span><b>${s.n}</b></div><div><span>std</span><b>${s.std.toFixed(2)} dB</b></div><div><span>sem</span><b>${s.sem.toFixed(2)} dB</b></div><div><span>floor</span><b>${g(v.instrument_floor, 3)} dB</b></div></div>
+      <p class="vc-reason">${escapeHtml(v.reason)}</p>`;
+    drawStrip('sens', R.sens, s.mean, v.uncertainty, v.limit, fmtDbm);
+  } else if (live) {
+    const sens = live.runs.map(r => sensitivityOf(r, c.per_threshold)).filter(v => v != null);
+    el.innerHTML = head(S.running ? 'RUNNING' : 'STOPPED', S.running ? 'RUN' : 'WAIT') + `
+      <div class="vc-big">${sens.length ? (sens.reduce((a, b) => a + b, 0) / sens.length).toFixed(1) + ' <small>dBm</small>' : '—'}</div>
+      <div class="vc-unc">${live.runs.length}/${c.repeats} sweeps · limit ${fmtDbm(c.sensitivity_limit_dbm)}</div>
+      <canvas class="vc-strip" id="strip-sens"></canvas>
+      <p class="vc-reason">Each dot is the 30.8 % crossing of one full sweep. The verdict waits for all ${c.repeats}.</p>`;
+    if (sens.length) { const ss = summarize(sens); drawStrip('sens', sens, ss.mean, Math.max(ss.sem, c.path_loss_floor_db), c.sensitivity_limit_dbm, fmtDbm); }
+  } else if (S.mode === 'real') {
+    el.innerHTML = head(S.tests.some(t => t.status !== 'pending') ? 'SKIPPED' : 'NOT RUN', 'SKIP') + `<div class="vc-big">— <small>no number</small></div>
+      <p class="vc-empty">Needs the second kit (<code>${PEER_SERIAL}</code>) on USB, a coax between the two U.FL connectors with a fixed attenuator, and <code>${L2FW}</code> built. <code>test_05_per_sweep.py</code> is designed but not written.</p>`;
+  } else {
+    el.innerHTML = head('NOT RUN', 'WAIT') + `<div class="vc-big">—</div><p class="vc-empty">Limit ${fmtDbm(c.sensitivity_limit_dbm)}, path-loss floor ${c.path_loss_floor_db} dB. Press Start run.</p>`;
+  }
+  const runs = R ? R.runs : live ? live.runs : [];
+  drawPer($('perChart'), runs, live ? live.cur : null, true);
+  if (!runs.length) { $('perTable').innerHTML = `<p class="vc-empty">${S.mode === 'real' ? 'No sweep: the peer kit is not connected.' : 'Rows appear after the first sweep finishes.'}</p>`; return; }
+  let crossed = false;
+  $('perTable').innerHTML = `<table class="ptable"><thead><tr><th>DUT TX</th><th>RX at peer</th><th>sent</th><th>received, mean</th><th>PER mean</th><th>PER std</th></tr></thead><tbody>${runs[0].map((l, i) => {
+    const pers = runs.map(r => r[i] && r[i].per).filter(v => v != null), recv = runs.map(r => r[i] && r[i].recv).filter(v => v != null);
+    const s = summarize(pers);
+    const cls = !crossed && s.mean < c.per_threshold ? (crossed = true, 'cross') : '';
+    return `<tr class="${cls}"><td>${fmtDbm(l.tx)}</td><td>${fmtDbm(l.rx)}</td><td>${l.sent}</td><td>${(recv.reduce((a, b) => a + b, 0) / recv.length).toFixed(0)}</td><td>${(s.mean * 100).toFixed(1)} %</td><td>${(s.std * 100).toFixed(2)} %</td></tr>`;
+  }).join('')}</tbody></table>`;
+}
+
 /* config.yaml tab */
 function renderCfg() {
-  const p = S.cfg.power, dis = S.running ? 'disabled' : '';
-  const num = (id, v, step) => `<input id="${id}" type="number" inputmode="decimal" step="${step}" min="0" value="${v}" ${dis}>`;
-  $('cfg').innerHTML = `
-    <p class="hint">The harness reads every limit and setting from config.yaml. Change a value here, then press Start run to see how the verdict reacts.</p>
-    <div class="grp"><div class="row" style="padding-left:0"><span class="key">commander:</span><span class="ro">${S.mode === 'practice' ? 'fake_commander.py' : 'commander-cli.exe'}</span></div>
+  const p = S.cfg.power, c = S.cfg.level2, dis = S.running ? 'disabled' : '';
+  const num = (id, v, step, min = true) => `<input id="${id}" type="number" inputmode="decimal" step="${step}" ${min ? 'min="0"' : ''} value="${v}" ${dis}>`;
+  const row = (id, key, input, l2 = false) => `<div class="row${l2 ? ' l2' : ''}"><label class="key" for="${id}">${key}:</label>${input}</div>`;
+  const common = `<div class="grp"><div class="row" style="padding-left:0"><span class="key">commander:</span><span class="ro">${S.mode === 'practice' ? 'fake_commander.py' : 'commander-cli.exe'}</span></div>
     <div class="row" style="padding-left:0"><span class="key">boards.dut.serial:</span><span class="ro">${SERIAL}</span></div>
-    <div class="row" style="padding-left:0"><span class="key">boards.peer.serial:</span><span class="ro">${PEER_SERIAL}</span></div></div>
-    <div class="grp"><span class="key">power:</span>
-      <div class="row"><label class="key" for="c_settle">settle_s:</label>${num('c_settle', p.settle_s, 0.5)}</div>
-      <div class="row"><label class="key" for="c_dur">duration_s:</label>${num('c_dur', p.duration_s, 0.5)}</div>
-      <div class="row"><label class="key" for="c_rate">datarate_hz:</label><select id="c_rate" ${dis}>${[250, 500, 1000, 2000].map(r => `<option ${r === p.datarate_hz ? 'selected' : ''}>${r}</option>`).join('')}</select></div>
-      <div class="row"><label class="key" for="c_rep">repeats:</label>${num('c_rep', p.repeats, 1)}</div>
+    <div class="row" style="padding-left:0"><span class="key">boards.peer.serial:</span><span class="ro">${PEER_SERIAL}</span></div></div>`;
+  const wi = (id, title, sub) => `<button type="button" id="${id}" ${dis}><b>${title}</b><small>${sub}</small></button>`;
+  let body, whatif;
+  if (S.level === 1) {
+    body = `<div class="grp"><span class="key">power:</span>
+      ${row('c_settle', 'settle_s', num('c_settle', p.settle_s, 0.5))}
+      ${row('c_dur', 'duration_s', num('c_dur', p.duration_s, 0.5))}
+      ${row('c_rate', 'datarate_hz', `<select id="c_rate" ${dis}>${[250, 500, 1000, 2000].map(r => `<option ${r === p.datarate_hz ? 'selected' : ''}>${r}</option>`).join('')}</select>`)}
+      ${row('c_rep', 'repeats', num('c_rep', p.repeats, 1))}
       <div class="comment"># PASS if mean + u is below the limit</div>
       <span class="key" style="padding-left:16px">limits_mA:</span>
-      ${MODES.map(m => `<div class="row l2"><label class="key" for="c_lim_${m}">${m}:</label>${num('c_lim_' + m, p.limits_mA[m], 'any')}</div>`).join('')}
+      ${MODES.map(m => row('c_lim_' + m, m, num('c_lim_' + m, p.limits_mA[m], 'any'), true)).join('')}
       <div class="comment"># what the AEM can resolve (UG573)</div>
       <span class="key" style="padding-left:16px">instrument_floor_mA:</span>
-      ${MODES.map(m => `<div class="row l2"><label class="key" for="c_fl_${m}">${m}:</label>${num('c_fl_' + m, p.instrument_floor_mA[m], 'any')}</div>`).join('')}
-    </div>
-    <div class="whatif">
-      <button type="button" id="wiInc" ${dis}><b>Put a limit inside the meter's error</b><small>ps1_sleep limit 0.0025 mA: 1.8 µA ± 1 µA straddles it → INCONCLUSIVE</small></button>
-      <button type="button" id="wiFail" ${dis}><b>Put a limit below the mean</b><small>ps4_active limit 2.0 mA: 2.6 mA − 0.1 mA is still above it → FAIL</small></button>
-      <button type="button" id="wiReset" ${dis}><b>Restore config.yaml</b><small>The values checked into the repo</small></button>
+      ${MODES.map(m => row('c_fl_' + m, m, num('c_fl_' + m, p.instrument_floor_mA[m], 'any'), true)).join('')}
     </div>`;
-  $('cfg').querySelectorAll('input,select').forEach(el => el.addEventListener('change', () => { readCfgForm(); if (!S.running) { renderVerdicts(); } }));
-  $('wiInc').onclick = () => { readCfgForm(); S.cfg.power.limits_mA.ps1_sleep = 0.0025; renderCfg(); flashNote('ps1_sleep limit set to 0.0025 mA. Press Start run.'); };
-  $('wiFail').onclick = () => { readCfgForm(); S.cfg.power.limits_mA.ps4_active = 2.0; renderCfg(); flashNote('ps4_active limit set to 2.0 mA. Press Start run.'); };
-  $('wiReset').onclick = () => { S.cfg = structuredClone(DEFAULT_CFG); renderCfg(); flashNote('config.yaml values restored.'); };
+    whatif = wi('wiInc', "Put a limit inside the meter's error", 'ps1_sleep limit 0.0025 mA: 1.8 µA ± 1 µA straddles it → INCONCLUSIVE')
+      + wi('wiFail', 'Put a limit below the mean', 'ps4_active limit 2.0 mA: 2.6 mA − 0.1 mA is still above it → FAIL');
+  } else {
+    body = `<div class="grp"><span class="key">level2:</span> <span class="design"># proposed, not in config.yaml yet</span>
+      ${row('c2_ch', 'channel', num('c2_ch', c.channel, 1))}
+      ${row('c2_pk', 'packets', num('c2_pk', c.packets, 100))}
+      ${row('c2_loss', 'path_loss_db', num('c2_loss', c.path_loss_db, 1))}
+      ${row('c2_txmin', 'tx_min_dbm', num('c2_txmin', c.tx_min_dbm, 1, false))}
+      ${row('c2_txmax', 'tx_max_dbm', num('c2_txmax', c.tx_max_dbm, 1, false))}
+      ${row('c2_step', 'tx_step_db', num('c2_step', c.tx_step_db, 0.5))}
+      ${row('c2_rep', 'repeats', num('c2_rep', c.repeats, 1))}
+      <div class="comment"># sensitivity = RX level where PER crosses 30.8 %</div>
+      <div class="comment"># PASS if sensitivity + u is below the limit</div>
+      ${row('c2_lim', 'sensitivity_limit_dbm', num('c2_lim', c.sensitivity_limit_dbm, 0.5, false))}
+      <div class="comment"># how well the attenuator + cable loss is known</div>
+      ${row('c2_fl', 'path_loss_floor_db', num('c2_fl', c.path_loss_floor_db, 0.1))}
+    </div>`;
+    whatif = wi('wiInc', 'Put the limit inside the calibration error', 'sensitivity_limit_dbm −96.5: about −96.9 ± 1 dB straddles it → INCONCLUSIVE')
+      + wi('wiFail', 'Ask for more than the radio has', 'sensitivity_limit_dbm −99: the modelled −96.9 dBm falls short → FAIL')
+      + wi('wiFew', 'Send fewer packets per level', 'packets 200: noisier curve and a wider spread between sweeps');
+  }
+  $('cfg').innerHTML = `<p class="hint">${S.level === 1 ? 'The harness reads every limit and setting from config.yaml.' : 'Level 2 settings as the design proposes them for config.yaml.'} Change a value, then press Start run to see how the verdict reacts.</p>
+    ${common}${body}
+    <div class="whatif">${whatif}${wi('wiReset', 'Restore defaults', S.level === 1 ? 'The values checked into config.yaml' : 'The proposed Level 2 values')}</div>`;
+  $('cfg').querySelectorAll('input,select').forEach(el => el.addEventListener('change', () => { readCfgForm(); if (!S.running) { renderVerdicts(); renderL2(); trace.draw(); } }));
+  if (S.level === 1) {
+    $('wiInc').onclick = () => { readCfgForm(); S.cfg.power.limits_mA.ps1_sleep = 0.0025; renderCfg(); flashNote('ps1_sleep limit set to 0.0025 mA. Press Start run.'); };
+    $('wiFail').onclick = () => { readCfgForm(); S.cfg.power.limits_mA.ps4_active = 2.0; renderCfg(); flashNote('ps4_active limit set to 2.0 mA. Press Start run.'); };
+    $('wiReset').onclick = () => { S.cfg.power = structuredClone(DEFAULT_CFG.power); renderCfg(); flashNote('config.yaml values restored.'); };
+  } else {
+    $('wiInc').onclick = () => { readCfgForm(); S.cfg.level2.sensitivity_limit_dbm = -96.5; renderCfg(); renderL2(); flashNote('sensitivity_limit_dbm set to −96.5. Press Start run.'); };
+    $('wiFail').onclick = () => { readCfgForm(); S.cfg.level2.sensitivity_limit_dbm = -99; renderCfg(); renderL2(); flashNote('sensitivity_limit_dbm set to −99. Press Start run.'); };
+    $('wiFew').onclick = () => { readCfgForm(); S.cfg.level2.packets = 200; renderCfg(); flashNote('packets set to 200 per level. Press Start run.'); };
+    $('wiReset').onclick = () => { S.cfg.level2 = structuredClone(DEFAULT_CFG.level2); renderCfg(); renderL2(); flashNote('Proposed Level 2 values restored.'); };
+  }
 }
 function readCfgForm() {
-  if (!$('c_settle')) return;
-  const p = S.cfg.power, f = (id, d) => { const v = parseFloat($(id).value); return Number.isFinite(v) && v >= 0 ? v : d; };
-  p.settle_s = f('c_settle', 2); p.duration_s = Math.max(0.1, f('c_dur', 2)); p.datarate_hz = parseInt($('c_rate').value, 10);
-  p.repeats = Math.min(20, Math.max(1, Math.round(f('c_rep', 5))));
-  MODES.forEach(m => { p.limits_mA[m] = f('c_lim_' + m, DEFAULT_CFG.power.limits_mA[m]); p.instrument_floor_mA[m] = f('c_fl_' + m, DEFAULT_CFG.power.instrument_floor_mA[m]); });
+  const val = (id, d, lo = -Infinity, hi = Infinity) => { const el = $(id); if (!el) return d; const v = parseFloat(el.value); return Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : d; };
+  const p = S.cfg.power, c = S.cfg.level2;
+  p.settle_s = val('c_settle', p.settle_s, 0); p.duration_s = val('c_dur', p.duration_s, 0.1);
+  if ($('c_rate')) p.datarate_hz = parseInt($('c_rate').value, 10);
+  p.repeats = Math.round(val('c_rep', p.repeats, 1, 20));
+  MODES.forEach(m => { p.limits_mA[m] = val('c_lim_' + m, p.limits_mA[m], 0); p.instrument_floor_mA[m] = val('c_fl_' + m, p.instrument_floor_mA[m], 0); });
+  c.channel = Math.round(val('c2_ch', c.channel, 0, 39)); c.packets = Math.round(val('c2_pk', c.packets, 50, 10000));
+  c.path_loss_db = val('c2_loss', c.path_loss_db, 0, 200);
+  c.tx_min_dbm = val('c2_txmin', c.tx_min_dbm, -40, 20); c.tx_max_dbm = val('c2_txmax', c.tx_max_dbm, c.tx_min_dbm, 20);
+  c.tx_step_db = val('c2_step', c.tx_step_db, 0.5, 10); c.repeats = Math.round(val('c2_rep', c.repeats, 1, 10));
+  c.sensitivity_limit_dbm = val('c2_lim', c.sensitivity_limit_dbm); c.path_loss_floor_db = val('c2_fl', c.path_loss_floor_db, 0);
 }
 function flashNote(t) { hud(t, 'Change takes effect on the next run'); }
 
 function renderSource() {
   let t;
-  if (S.source === 'sample') t = 'At rest: docs/sample-run/power_summary.json, one practice run against the fake board. Simulated, not a measurement.';
+  if (S.source === 'l2example') t = 'Level 2 is designed, not written: test_05_per_sweep.py is not in the repo and no second kit is connected. This example sweep comes from a waterfall model inside this page (50 % PER at −97.6 dBm). It shows the method, not a measurement.';
+  else if (S.source === 'l2real') t = 'Level 2 has never run on hardware. config.yaml names peer 440654321, but it is not plugged in and firmware/ble_dtm.rps is not built. Press Start run to see where the designed test stops.';
+  else if (S.level === 2) t = S.mode === 'practice' ? 'This session, Level 2 design run. The peer kit, every DTM packet count and the PER curve are simulated in this page, then judged with the same stats.py rule as Level 1.' : 'This session, real bench. The peer kit is not on USB, so Level 2 stops at the first probe and everything that needs it skips.';
+  else if (S.source === 'sample') t = 'At rest: docs/sample-run/power_summary.json, one practice run against the fake board. Simulated, not a measurement.';
   else if (S.source === 'realxml') t = `At rest: results/${REAL_XML.ts}/ and results/last_run.xml, the physical DK2605A run. Device control works; no power numbers, because the kit has no meter.`;
   else if (S.mode === 'practice') t = `This session, practice mode. Every current value was drawn from fake_commander.py's profiles and judged with stats.py's rule. Simulated.`;
   else t = `This session, real-bench replay. Commands and outcomes follow results/last_run.xml from the physical DK2605A.`;
   $('resSource').textContent = t;
 }
-function renderAll() { renderTests(); renderFiles(); renderVerdicts(); drawBars(); renderSource(); renderCfg(); trace.draw(); }
+function renderAll() { $('l1res').hidden = S.level !== 1; $('l2res').hidden = S.level !== 2; $('traceKind').textContent = S.level === 2 ? 'DTM sweep' : 'aem dump'; renderL2(); renderTests(); renderFiles(); renderVerdicts(); drawBars(); renderSource(); renderCfg(); trace.draw(); }
 
 function setRunning(r) {
   $('startBtn').disabled = r; $('stopBtn').disabled = !r;
-  $('modePractice').disabled = r; $('modeReal').disabled = r;
+  $('modePractice').disabled = r; $('modeReal').disabled = r; $('lvl1').disabled = r; $('lvl2').disabled = r;
   $('startBtn').lastChild.textContent = r ? 'Running…' : 'Start run';
   if (!r) $('runCount').textContent = S.tests.length ? `${S.tests.filter(t => t.status !== 'pending').length}/${S.tests.length} tests` : '—';
 }
 
 /* at-rest state for each mode */
-function loadRest(mode) {
-  S.mode = mode;
+function loadRest(mode, level = S.level) {
+  S.mode = mode; S.level = level;
+  $('lvl1').setAttribute('aria-pressed', level === 1);
+  $('lvl2').setAttribute('aria-pressed', level === 2);
   $('modePractice').setAttribute('aria-pressed', mode === 'practice');
   $('modeReal').setAttribute('aria-pressed', mode === 'real');
   const tr = $('truth');
   tr.className = 'truth ' + (mode === 'practice' ? 'sim' : 'real');
-  tr.textContent = mode === 'practice' ? 'Simulated · numbers come from tools/fake_commander.py, not from a chip' : 'Replay of the real DK2605A run · AEM Supported: False · no power numbers';
-  S.tests = buildTests(); S.files = []; S.summary = {}; S.runMeans = {}; S.modeLive = {}; S.flashed = {}; S.pytestTail = '';
-  if (mode === 'practice') {
+  tr.textContent = level === 2
+    ? (mode === 'practice' ? 'Level 2 design · peer, packets and PER are simulated in this page; no second kit exists' : 'Real bench · peer 440654321 is not connected, so Level 2 cannot run')
+    : mode === 'practice' ? 'Simulated · numbers come from tools/fake_commander.py, not from a chip' : 'Replay of the real DK2605A run · AEM Supported: False · no power numbers';
+  S.tests = buildTests(); S.files = []; S.summary = {}; S.runMeans = {}; S.modeLive = {}; S.flashed = {}; S.pytestTail = ''; S.l2 = null; S.l2live = null; S.manifest = null;
+  if (level === 2) {
+    S.tests = buildTestsL2();
+    if (mode === 'practice') {
+      S.source = 'l2example'; S.ts = 'example';
+      try { S.l2 = finishL2(Array.from({ length: S.cfg.level2.repeats }, () => simulateRun(gauss(0, 0.25)))); } catch (e) { S.l2 = null; }
+      S.files = [{ name: 'per_summary.json', note: 'example, simulated' }, { name: 'per_vs_rx_power.png', note: 'example, simulated' }];
+    } else { S.source = 'l2real'; S.ts = '(never run)'; }
+  } else if (mode === 'practice') {
     S.source = 'sample'; S.ts = 'sample-run';
     for (const m of MODES) S.summary[m] = { ...SAMPLE[m], runs: [SAMPLE[m].min, SAMPLE[m].max], verdict: judge(SAMPLE[m], S.cfg.power.limits_mA[m], S.cfg.power.instrument_floor_mA[m]) };
     S.files = [{ name: 'power_summary.json', note: 'docs/sample-run' }, { name: 'power_by_mode.png', note: 'docs/sample-run' }];
@@ -1083,13 +1424,16 @@ function loadRest(mode) {
     S.manifest = { ...buildManifest('Simplicity Commander 1v25p0b1995', '2026-08-21T07:37:25+00:00'), session: { started_utc: '2026-08-21T07:37:23+00:00', ended_utc: '2026-08-21T07:37:25+00:00' }, host: { hostname: 'ICTECE-L514-30', platform: 'Windows-11-10.0.26200-SP0', python: '3.12.10' }, git: { available: true, commit: 'ba385af5b222296322ae290b050c56d483183ae1', branch: 'main', dirty: false, dirty_files: [] } };
   }
   term.textContent = ''; screenLines.length = 0;
-  log(mode === 'practice'
+  if (level === 2) log(mode === 'practice'
+    ? '# Level 2 design: RF link quality. DUT 446000788 sends BLE Direct Test Mode packets through a coax and a fixed attenuator to peer 440654321.\n# test_05_per_sweep.py is not in the repo yet; this plays the design with simulated packet counts. Press Start run.'
+    : '# Level 2 on the real bench: config.yaml lists peer 440654321, but no second kit is plugged in.\n# Press Start run to see where the designed test stops.', 'n');
+  else log(mode === 'practice'
     ? '# Practice mode. config.yaml commander → python3 tools/fake_commander.py\n# The fake answers like a SiWx917-PK6031A with an AEM. Press Start run to watch the full session.'
     : '# Real bench. config.yaml commander → commander-cli.exe, kit DK2605A, J-Link 446000788\n# Press Start run to replay the physical run from results/last_run.xml.', 'n');
   $('nowTest').innerHTML = '<span class="file">tests/</span>— waiting to start';
   setSteps([]); $('codeRef').textContent = ''; $('prog').style.width = '0';
   setRunning(false);
-  bench.setMode(mode);
+  bench.setLevel(level, mode); bench.setAtt(S.cfg.level2.path_loss_db);
   hud('Idle — press Start run', 'Drag to orbit · scroll to zoom · hover a part to see what it does in the harness');
   renderAll();
 }
@@ -1101,8 +1445,8 @@ const bench = createBench();
 
 function createBench() {
   const api = {
-    state: { led: 'off', flash: null, glow: 0, glowTarget: 0, resetFlash: 0, sampling: false, mode: null, noAemAlert: 0, busyP: 0 },
-    packets() {}, busy() {}, setMode() {},
+    state: { peerFlash: null, peerRx: 0, link: null, peerAlert: 0, led: 'off', flash: null, glow: 0, glowTarget: 0, resetFlash: 0, sampling: false, mode: null, noAemAlert: 0, busyP: 0 },
+    packets() {}, busy() {}, setLevel() {}, setAtt() {},
   };
   const stage = $('stage'), canvas = $('gl');
   let renderer;
@@ -1408,10 +1752,10 @@ function createBench() {
   const pkGeo = new THREE.SphereGeometry(1.25, 14, 10);
   const pkDown = new THREE.MeshBasicMaterial({ color: 0x5cc8e8, toneMapped: false });
   const pkUp = new THREE.MeshBasicMaterial({ color: 0xf0a43a, toneMapped: false });
-  api.packets = (dir, n) => {
+  api.packets = (dir, n, toPeer = false) => {
     for (let i = 0; i < n; i++) {
       const m = new THREE.Mesh(pkGeo, dir === 'down' ? pkDown : pkUp);
-      m.userData = { t: -i * 0.08, dir, v: 0.75 + Math.random() * .2 };
+      m.userData = { t: -i * 0.08, dir, v: (toPeer ? 0.42 : 0.75) + Math.random() * .2, c: toPeer ? peerCurve : curve };
       scene.add(m); pk.push(m);
     }
   };
@@ -1458,13 +1802,55 @@ function createBench() {
   const sense = new THREE.Line(new THREE.BufferGeometry().setFromPoints(senseCurve.getPoints(60)), new THREE.LineDashedMaterial({ color: 0x5cc8e8, dashSize: 1.6, gapSize: 1.2, transparent: true, opacity: .8 }));
   sense.computeLineDistances(); scene.add(sense);
 
-  const peer = makeBoard().g;
-  peer.traverse(o => { if ((o.isMesh || o.isInstancedMesh) && o.material.visible === false) { o.visible = false; return; } if (o.isMesh || o.isInstancedMesh) { o.material = new THREE.MeshBasicMaterial({ color: 0x5cc8e8, wireframe: true, transparent: true, opacity: 0.07 }); o.castShadow = false; o.userData = {}; } });
-  peer.position.set(62, boardY, -42); peer.rotation.y = -0.5; scene.add(peer);
-  // remove the peer's meshes from picking, then add one hit box for it
+  /* ---- the peer kit: a second BRD2605A, turned to face the DUT ---- */
+  const PB = makeBoard(), peer = PB.g;
+  peer.position.set(70, boardY, -10); peer.rotation.y = Math.PI; scene.add(peer);
+  peer.updateMatrixWorld(true);
   for (let i = pickables.length - 1; i >= 0; i--) { let o = pickables[i], inPeer = false; while (o) { if (o === peer) { inPeer = true; break; } o = o.parent; } if (inPeer) pickables.splice(i, 1); }
-  const peerHit = new THREE.Mesh(new THREE.BoxGeometry(BL, 4, BW), new THREE.MeshBasicMaterial({ visible: false })); peerHit.position.copy(peer.position); peerHit.rotation.copy(peer.rotation); scene.add(peerHit);
-  info(peerHit, 'Peer board (not connected)', 'config.yaml lists a second kit, serial 440654321, for Level 2. A PER-vs-transmit-power sweep needs a transmitter and a receiver, so that pillar is designed but not written.', 'config.yaml → boards.peer');
+  const ghostMat = new THREE.MeshBasicMaterial({ color: 0x5cc8e8, wireframe: true, transparent: true, opacity: 0.07 });
+  peer.traverse(o => { if (o.isMesh || o.isInstancedMesh) { o.userData.mat0 = o.material; o.userData.vis0 = !(o.material && o.material.visible === false); } });
+  let peerSolid = false;
+  const setPeerSolid = solid => { peerSolid = solid; peer.traverse(o => { if (!o.userData.mat0) return; o.material = solid ? o.userData.mat0 : ghostMat; o.visible = o.userData.vis0; o.castShadow = solid && o.userData.vis0; }); };
+  const peerHit = new THREE.Mesh(new THREE.BoxGeometry(BL, 4, BW), new THREE.MeshBasicMaterial({ visible: false }));
+  peerHit.position.copy(peer.position); peerHit.rotation.copy(peer.rotation); scene.add(peerHit);
+  info(peerHit, 'Peer board', '', 'config.yaml → boards.peer');
+  const PEER_INFO = {
+    ghost: ['Peer board (not connected)', 'config.yaml lists a second kit, serial 440654321. Level 2 needs it: a packet-error-rate sweep needs a transmitter and a receiver.'],
+    solid: ['Peer board · DTM receiver (simulated)', 'A second kit, serial 440654321. It runs BLE Direct Test Mode as the receiver and counts the packets the DUT sends through the cable. PER = 1 − received / sent.'],
+    missing: ['Peer board · not on USB', 'Level 2 on the real bench stops here: `adapter probe --serialno 440654321` finds no kit, so the sweep and the sensitivity check skip.'],
+  };
+  const v3 = (x, y, z) => new THREE.Vector3(x, y, z);
+
+  // its own USB link back to the host
+  const peerMouth = peer.localToWorld(v3(-29, BT / 2 + 1.6, 0));
+  const lapPort2 = LAP.localToWorld(v3(48.5, 2.2, -18));
+  const peerCurve = new THREE.CatmullRomCurve3([
+    lapPort2, lapPort2.clone().add(v3(14, 0, -4)), v3(-60, 1.6, -80), v3(40, 1.6, -74), v3(110, 1.6, -42), v3(112, 1.6, -4),
+    v3(peerMouth.x + 4.6, peerMouth.y - 0.4, peerMouth.z), v3(peerMouth.x + 1.2, peerMouth.y, peerMouth.z),
+  ]);
+  const peerCable = new THREE.Mesh(new THREE.TubeGeometry(peerCurve, 260, 1.5, 14, false), cable.material);
+  peerCable.castShadow = true; scene.add(peerCable);
+  const peerPlug = new THREE.Mesh(plug.geometry, plug.material);
+  peerPlug.position.set(peerMouth.x + 4.6, peerMouth.y, peerMouth.z); peerPlug.castShadow = true; scene.add(peerPlug);
+  info(peerCable, 'Peer USB cable', 'The second kit needs its own link to the host: Commander flashes it by serial number, and DTM commands reach it over its virtual COM port.');
+
+  // conducted RF path: DUT U.FL → coax → fixed attenuator → coax → peer U.FL
+  const ufl1 = v3(16.5, top + 1.3, -8.5), ufl2 = peer.localToWorld(v3(16.5, BT / 2 + 1.3, -8.5));
+  const coaxCurve = new THREE.CatmullRomCurve3([
+    ufl1, v3(16.5, top + 6, -12), v3(21, 5, -19), v3(27, 3.4, -21), v3(34, 3.4, -21), v3(41, 3.4, -21), v3(47, 5, -12), v3(ufl2.x, top + 6, ufl2.z - 3), ufl2,
+  ]);
+  const coax = new THREE.Mesh(new THREE.TubeGeometry(coaxCurve, 220, 0.75, 10, false), new THREE.MeshStandardMaterial({ color: 0x2a2f36, roughness: 0.45, metalness: 0.2 }));
+  coax.castShadow = true; scene.add(coax);
+  const att = new THREE.Mesh(new THREE.CylinderGeometry(2.4, 2.4, 13, 32), new THREE.MeshStandardMaterial({ color: 0xc3c7cc, metalness: 1, roughness: 0.28 }));
+  att.rotation.z = Math.PI / 2; att.position.set(34, 3.4, -21); att.castShadow = true; scene.add(att);
+  const attNuts = [27.2, 40.8].map(x => { const n = new THREE.Mesh(new THREE.CylinderGeometry(1.7, 1.7, 1.6, 6), M.gold); n.rotation.z = Math.PI / 2; n.position.set(x, 3.4, -21); scene.add(n); return n; });
+  info(coax, 'Coax, U.FL to U.FL', 'Conducted path from the DUT’s RF connector to the peer’s. Cabling the RF keeps the room, people and nearby Wi-Fi out of the measurement. Cyan pulses are DTM packets; red ones are lost.');
+  info(att, 'Fixed attenuator', 'Sets the path loss between the radios (path_loss_db). Sweeping the DUT’s TX power then sweeps the level the peer receives across its sensitivity. How well this loss is known (path_loss_floor_db) is the floor of the verdict.', 'level2.path_loss_db · level2.path_loss_floor_db');
+  let uAtt = 0.5, best = 1e9;
+  for (let i = 0; i <= 200; i++) { const d = coaxCurve.getPointAt(i / 200).distanceTo(att.position); if (d < best) { best = d; uAtt = i / 200; } }
+  const rf = [], rfGeo = new THREE.SphereGeometry(0.95, 10, 8);
+  const spawnRf = lost => { const m = new THREE.Mesh(rfGeo, new THREE.MeshBasicMaterial({ color: 0x5cc8e8, transparent: true, opacity: 1, toneMapped: false })); m.userData = { u: 0, lost }; m.position.copy(ufl1); scene.add(m); rf.push(m); };
+  const l2Objs = [peerCable, peerPlug, coax, att, ...attNuts];
 
   /* ---- HTML labels pinned to 3-D points ---- */
   const LBL = [
@@ -1476,26 +1862,37 @@ function createBench() {
     { p: new THREE.Vector3(-175, 62, -70), t: 'Host · pytest', far: true },
     { p: new THREE.Vector3(-30, 13, 40), t: 'AEM · simulated', cls: 'sim', id: 'aem' },
     { p: P.dbg.clone().add(new THREE.Vector3(0, 7, 0)), t: '✕ AEM Supported : False', cls: 'warn', id: 'noaem' },
-    { p: new THREE.Vector3(62, boardY + 5, -42), t: 'Peer 440654321 · not connected', cls: 'ghost', far: true },
+    { p: new THREE.Vector3(70, boardY + 7, -10), t: 'Peer 440654321 · not connected', cls: 'ghost', any: true, id: 'peer' },
+    { p: new THREE.Vector3(34, 8, -21), t: 'Attenuator', any: true, id: 'att' },
   ];
   const lblRoot = $('labels');
   LBL.forEach(l => { l.el = document.createElement('div'); l.el.className = 'lbl ' + (l.cls || ''); l.el.innerHTML = `<span>${l.t}</span>`; lblRoot.appendChild(l.el); });
   let showLabels = true;
   $('lblBtn').onclick = () => { showLabels = !showLabels; $('lblBtn').setAttribute('aria-pressed', showLabels); };
 
-  api.setMode = mode => {
-    const sim = mode === 'practice';
-    aem.visible = sim; sense.visible = sim;
-    LBL.find(l => l.id === 'aem').hidden = !sim;
-    LBL.find(l => l.id === 'noaem').hidden = sim;
-    screenDirty = true;
-  };
+  const setLbl = (id, t, cls = '') => { const l = LBL.find(x => x.id === id); l.el.className = 'lbl ' + cls; l.el.innerHTML = `<span>${t}</span>`; };
   api.busy = () => {};
 
   /* ---- camera presets ---- */
   let tween = null;
   const go = (pos, tgt) => { tween = { t: 0, p0: camera.position.clone(), p1: pos, q0: controls.target.clone(), q1: tgt }; };
   $('viewChip').onclick = () => go(new THREE.Vector3(30, 58, 70), new THREE.Vector3(-6, 0, 2));
+  api.setLevel = (level, mode) => {
+    const l2 = level === 2, live = l2 && mode === 'practice';
+    aem.visible = !l2 && mode === 'practice'; sense.visible = aem.visible;
+    LBL.find(l => l.id === 'aem').hidden = !aem.visible;
+    LBL.find(l => l.id === 'noaem').hidden = !(mode === 'real' && !l2);
+    LBL.find(l => l.id === 'att').hidden = !live;
+    setPeerSolid(live);
+    l2Objs.forEach(o => o.visible = live);
+    const k = live ? 'solid' : l2 ? 'missing' : 'ghost';
+    setLbl('peer', live ? 'Peer 440654321 · DTM receiver' : l2 ? '✕ Peer 440654321 · not on USB' : 'Peer 440654321 · not connected', live ? 'sim' : l2 ? 'warn' : 'ghost');
+    peerHit.userData.info = { title: PEER_INFO[k][0], body: PEER_INFO[k][1], code: 'config.yaml → boards.peer' };
+    rf.splice(0).forEach(m => { scene.remove(m); m.material.dispose(); });
+    if (l2) go(v3(52, 105, 138), v3(30, 0, -6)); else go(v3(30, 58, 70), v3(-6, 0, 2));
+    screenDirty = true;
+  };
+  api.setAtt = db => setLbl('att', `Attenuator · ${db} dB path`, 'sim');
   $('viewAll').onclick = () => go(new THREE.Vector3(-10, 210, 260), new THREE.Vector3(-60, 0, 0));
 
   /* ---- hover picking ---- */
@@ -1549,6 +1946,7 @@ function createBench() {
         if (st.advFlash > 0) { ledKey = 'blue'; ledI = st.advFlash; target = Math.min(1, target + 0.35 * st.advFlash); st.advFlash = Math.max(0, st.advFlash - dt * 4); }
       }
     } else advClock = 0;
+    if (st.link) { ledKey = 'blue'; ledI = 0.55 + 0.45 * Math.sin(performance.now() / 70); target = 0.7; }
     if (st.flash != null) { ledKey = 'flash'; ledI = 0.5 + 0.5 * Math.sin(performance.now() / 90); target = 0.25; }
     if (st.resetFlash > 0) { ledKey = 'white'; ledI = st.resetFlash; st.resetFlash = Math.max(0, st.resetFlash - dt * 3); target = 0; }
     st.glow += (target - st.glow) * Math.min(1, dt * 5);
@@ -1572,7 +1970,7 @@ function createBench() {
       u.t += dt * u.v;
       if (u.t > 1) { scene.remove(m); pk.splice(i, 1); continue; }
       m.visible = u.t >= 0;
-      if (u.t >= 0) { const pt = curve.getPointAt(u.dir === 'down' ? u.t : 1 - u.t); m.position.copy(pt).y += 1.6; }
+      if (u.t >= 0) { const pt = u.c.getPointAt(u.dir === 'down' ? u.t : 1 - u.t); m.position.copy(pt).y += 1.6; }
     }
     // radio rings
     for (let i = waves.length - 1; i >= 0; i--) {
@@ -1582,6 +1980,24 @@ function createBench() {
       const s = 3 + u.age * 38; m.scale.set(s, s, s); m.material.opacity = Math.max(0, 0.9 - u.age * 1.2);
       if (u.age > 0.8) { scene.remove(m); m.material.dispose(); waves.splice(i, 1); }
     }
+    // DTM packets on the coax: lost ones turn red and die after the attenuator
+    if (st.link) { st.rfAcc = (st.rfAcc || 0) + dt * 26; while (st.rfAcc >= 1) { st.rfAcc -= 1; spawnRf(Math.random() < st.link.per); } }
+    for (let i = rf.length - 1; i >= 0; i--) {
+      const m = rf[i], u = m.userData;
+      u.u += dt * 0.85;
+      let gone = u.u >= 1;
+      if (u.lost && u.u > uAtt) { m.material.color.setHex(0xef5b5b); m.material.opacity = Math.max(0, 1 - (u.u - uAtt) * 7); if (m.material.opacity <= 0) gone = true; }
+      if (gone) { if (!u.lost && u.u >= 1) st.peerRx = 1; scene.remove(m); m.material.dispose(); rf.splice(i, 1); continue; }
+      m.position.copy(coaxCurve.getPointAt(u.u));
+    }
+    // peer LED: blue while flashing, green blink on each received packet
+    if (peerSolid) {
+      let pc = 0, pi = 0;
+      if (st.peerFlash != null) { pc = LED_COL.flash; pi = 0.5 + 0.5 * Math.sin(performance.now() / 90); }
+      else if (st.peerRx > 0) { pc = LED_COL.green; pi = st.peerRx; st.peerRx = Math.max(0, st.peerRx - dt * 6); }
+      PB.ledMat.emissive.setHex(pc); PB.ledMat.emissiveIntensity = 2.5 * pi;
+    }
+    if (st.peerAlert > 0) st.peerAlert = Math.max(0, st.peerAlert - dt * 0.4);
     // the "no AEM" label pulses after the capability test fails
     if (st.noAemAlert > 0) st.noAemAlert = Math.max(0, st.noAemAlert - dt * 0.4);
 
@@ -1594,9 +2010,10 @@ function createBench() {
     const camDist = camera.position.distanceTo(controls.target);
     for (const l of LBL) {
       v.copy(l.p).project(camera);
-      const vis = showLabels && !l.hidden && v.z < 1 && Math.abs(v.x) < 1.05 && Math.abs(v.y) < 1.05 && (l.far ? camDist > 120 : camDist < 260);
+      const vis = showLabels && !l.hidden && v.z < 1 && Math.abs(v.x) < 1.05 && Math.abs(v.y) < 1.05 && (l.any || (l.far ? camDist > 120 : camDist < 260));
       l.el.style.display = vis ? '' : 'none';
       if (vis) { l.el.style.left = ((v.x + 1) / 2 * w) + 'px'; l.el.style.top = ((1 - v.y) / 2 * h) + 'px'; }
+      if (l.id === 'peer') l.el.style.opacity = st.peerAlert > 0 ? String(0.55 + 0.45 * Math.abs(Math.sin(performance.now() / 160))) : '1';
       if (l.id === 'noaem') l.el.style.opacity = st.noAemAlert > 0 ? String(0.55 + 0.45 * Math.abs(Math.sin(performance.now() / 160))) : '1';
     }
     if (frame % 3 === 0) pick();
@@ -1614,13 +2031,15 @@ $('stopBtn').onclick = () => { S.stop = true; $('stopBtn').disabled = true; };
 $('speed').onchange = e => { S.speed = parseFloat(e.target.value); };
 $('modePractice').onclick = () => { if (!S.running) loadRest('practice'); };
 $('modeReal').onclick = () => { if (!S.running) loadRest('real'); };
+$('lvl1').onclick = () => { if (!S.running) loadRest(S.mode, 1); };
+$('lvl2').onclick = () => { if (!S.running) loadRest(S.mode, 2); };
 document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => {
   document.querySelectorAll('.tabs button').forEach(x => x.setAttribute('aria-selected', x === b));
   $('tab-run').hidden = b.dataset.tab !== 'run'; $('tab-cfg').hidden = b.dataset.tab !== 'cfg';
   if (b.dataset.tab === 'run') trace.draw();
 });
-let rz; window.addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(() => { drawBars(); renderVerdicts(); trace.draw(); }, 120); });
-document.fonts?.ready?.then(() => { drawBars(); renderVerdicts(); trace.draw(); });
+let rz; window.addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(() => { drawBars(); renderVerdicts(); renderL2(); trace.draw(); }, 120); });
+document.fonts?.ready?.then(() => { drawBars(); renderVerdicts(); renderL2(); trace.draw(); });
 
 loadRest('practice');
 </script>
