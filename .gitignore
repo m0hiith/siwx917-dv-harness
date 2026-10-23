@@ -6,3 +6,4 @@ firmware/*.s37
 firmware/*.hex
 firmware/*.bin
 .DS_Store
+.codex/
